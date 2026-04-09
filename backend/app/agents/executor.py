@@ -49,6 +49,48 @@ async def _call_browser(tool_name: str, params: dict[str, Any]) -> Any:
     raise ValueError(f"Unsupported browser tool: {tool_name}")
 
 
+async def _revise_tool_params_for_retry(
+    state: VerifyFlowState,
+    tool_name: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    from app.core.config import settings
+    from app.core.llm import executor_llm
+
+    verification_result = state["verification_result"] or {}
+    retry_count = state["retry_count"]
+    failure_indicators = verification_result.get("failure_indicators", [])
+
+    revised = await executor_llm.chat_json(
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You revise MCP tool parameters for a retry attempt. "
+                    "Keep the same tool_name and only update tool_params when needed "
+                    "to fix the failure indicators."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Task description: {state['current_task']['description']}\n"
+                    f"Tool name: {tool_name}\n"
+                    f"Current tool params: {params}\n\n"
+                    f"Previous attempt failed. Judge analysis: {verification_result.get('judge_reasoning')}\n"
+                    f"Failure indicators: {failure_indicators}\n"
+                    f"Retry {retry_count} of {settings.max_retries}. Fix the specific issues identified."
+                ),
+            },
+        ],
+        schema_hint='{"tool_params": {}}',
+        temperature=0.1,
+    )
+
+    revised_params = revised.get("tool_params")
+    return revised_params if isinstance(revised_params, dict) else params
+
+
 async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
     current_task = state["current_task"]
     if current_task is None:
@@ -64,6 +106,8 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
 
     tool_name = current_task["tool_name"]
     params = current_task.get("tool_params", {}) or {}
+    if state["verification_result"] is not None and state["retry_count"] > 0:
+        params = await _revise_tool_params_for_retry(state, tool_name, params)
 
     try:
         if tool_name.startswith("github."):
@@ -99,6 +143,7 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
 
     updated_current_task = {
         **current_task,
+        "tool_params": params,
         "claimed_result": task.claimed_result,
     }
 

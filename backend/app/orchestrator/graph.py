@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from contextvars import ContextVar
 from typing import Any
 from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -197,14 +198,13 @@ async def judge_node(state: VerifyFlowState) -> VerifyFlowState:
     task.status = "claimed"
     await db.commit()
 
-    verification_result = await judge.evaluate(state)
+    updated_state = await judge.evaluate(state, db)
     tasks = await _refresh_tasks(state)
     current_task = next(task_data for task_data in tasks if task_data["id"] == current_task["id"])
     return {
-        **state,
+        **updated_state,
         "tasks": tasks,
         "current_task": current_task,
-        "verification_result": verification_result,
         "error": None,
     }
 
@@ -218,28 +218,29 @@ async def decide_node(state: VerifyFlowState) -> VerifyFlowState:
         return {**state, "error": "Cannot decide without a task and verification result."}
 
     task = await _load_task(db, current_task["id"])
-
     settings = _get_settings()
 
     if verification_result["verified"] and verification_result["confidence"] >= settings.verification_confidence_threshold:
         task.status = "verified"
         await db.commit()
         await _create_ledger_entry(task, verification_result)
-    elif verification_result["confidence"] < settings.verification_confidence_threshold and task.retry_count < settings.max_retries:
+        next_retry_count = task.retry_count
+    elif state["retry_count"] < settings.max_retries:
         task.retry_count += 1
         await db.commit()
+        next_retry_count = task.retry_count
     else:
         await db.commit()
+        next_retry_count = settings.max_retries + 1
 
     tasks = await _refresh_tasks(state)
     current_task = next((task_data for task_data in tasks if task_data["id"] == current_task["id"]), None)
-    retry_count = current_task["retry_count"] if current_task else task.retry_count
 
     return {
         **state,
         "tasks": tasks,
         "current_task": current_task,
-        "retry_count": retry_count,
+        "retry_count": next_retry_count,
         "error": None,
     }
 
@@ -247,13 +248,8 @@ async def decide_node(state: VerifyFlowState) -> VerifyFlowState:
 async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
     db = _get_db()
     current_task = state["current_task"]
-    verification_result = state["verification_result"] or {
-        "verified": False,
-        "confidence": 0.0,
-        "method": "hybrid",
-        "evidence": "Task escalated after retries were exhausted.",
-        "judge_reasoning": None,
-    }
+    settings = _get_settings()
+    verification_result = state["verification_result"] or {}
 
     if current_task is None:
         return {**state, "error": "No current task available to escalate."}
@@ -261,7 +257,31 @@ async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
     task = await _load_task(db, current_task["id"])
     task.status = "escalated"
     await db.commit()
-    await _create_ledger_entry(task, verification_result)
+
+    evidence = (
+        f"Escalated after {settings.max_retries} retries. "
+        f"Last judge reasoning: {verification_result.get('judge_reasoning')}"
+    )
+    escalation_result = {
+        "verified": False,
+        "confidence": 0.0,
+        "method": "hybrid",
+        "evidence": evidence,
+        "judge_reasoning": verification_result.get("judge_reasoning"),
+    }
+    await _create_ledger_entry(task, escalation_result)
+
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        payload = {
+            "run_id": state["run_id"],
+            "task_id": current_task["id"],
+            "evidence": evidence,
+        }
+        await db.execute(
+            text("SELECT pg_notify('task_escalated', :payload)"),
+            {"payload": json.dumps(payload)},
+        )
+        await db.commit()
 
     tasks = await _refresh_tasks(state)
     return {
@@ -307,7 +327,7 @@ def route_after_decide(state: VerifyFlowState) -> str:
     result = state["verification_result"] or {}
     if result.get("verified") and result.get("confidence", 0.0) >= settings.verification_confidence_threshold:
         return "pick_task"
-    if state["retry_count"] < settings.max_retries:
+    if state["retry_count"] <= settings.max_retries:
         return "execute"
     return "escalate"
 

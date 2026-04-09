@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -18,13 +19,27 @@ os.environ.setdefault("VERIFICATION_CONFIDENCE_THRESHOLD", "0.75")
 
 from app.db.session import Base
 from app.models.domain import Run, Task
+from app.orchestrator import graph as graph_module
 from app.orchestrator.graph import run_graph
 
 
 @pytest.mark.asyncio
-async def test_run_graph_verifies_all_tasks():
+async def test_run_graph_verifies_all_tasks(monkeypatch: pytest.MonkeyPatch):
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    monkeypatch.setattr(
+        graph_module.registry,
+        "verify",
+        AsyncMock(
+            return_value=graph_module.VerificationResult(
+                verified=True,
+                confidence=1.0,
+                method="deterministic",
+                evidence="Stub verification passed",
+            )
+        ),
+    )
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
