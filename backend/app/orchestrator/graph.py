@@ -12,7 +12,11 @@ from sqlalchemy.orm import selectinload
 from app.agents import executor, judge, planner
 from app.models.domain import LedgerEntry, Run, Task
 from app.orchestrator.states import VerifyFlowState
-from app import registry
+from app.registry.base import registry
+from app.registry.verifiers import browser as _browser_verifiers  # noqa: F401
+from app.registry.verifiers import filesystem as _filesystem_verifiers  # noqa: F401
+from app.registry.verifiers import github as _github_verifiers  # noqa: F401
+from app.schemas.verification import VerificationResult
 
 _db_session: ContextVar[AsyncSession] = ContextVar("verifyflow_graph_db")
 
@@ -159,22 +163,26 @@ async def execute_node(state: VerifyFlowState) -> VerifyFlowState:
 
 async def verify_node(state: VerifyFlowState) -> VerifyFlowState:
     db = _get_db()
-    current_task = state["current_task"]
-    if current_task is None:
-        return {**state, "error": "No current task available for verification."}
+    current_task_data = state["current_task"]
+    action_claim = state["action_claim"]
+    if current_task_data is None or action_claim is None:
+        return {**state, "error": "No current task or action claim available for verification."}
 
-    task = await _load_task(db, current_task["id"])
+    task = await _load_task(db, current_task_data["id"])
     task.status = "claimed"
     await db.commit()
 
-    verification_result = await registry.verify(state)
+    verification_result = await registry.verify(action_claim)
+    verification_payload = verification_result.model_dump()
+    await _create_ledger_entry(task, verification_payload)
+
     tasks = await _refresh_tasks(state)
-    current_task = next(task_data for task_data in tasks if task_data["id"] == current_task["id"])
+    current_task = next(task_data for task_data in tasks if task_data["id"] == current_task_data["id"])
     return {
         **state,
         "tasks": tasks,
         "current_task": current_task,
-        "verification_result": verification_result,
+        "verification_result": verification_payload,
         "error": None,
     }
 
@@ -287,9 +295,11 @@ def route_after_pick_task(state: VerifyFlowState) -> str:
 
 
 def route_after_verify(state: VerifyFlowState) -> str:
-    result = state["verification_result"] or {}
-    method = result.get("method")
-    return "judge" if method in {"llm_judge", "hybrid"} else "decide"
+    result = state["verification_result"]
+    if result is None:
+        return "judge"
+    verification_result = VerificationResult.model_validate(result)
+    return "judge" if registry.needs_judge(verification_result) else "decide"
 
 
 def route_after_decide(state: VerifyFlowState) -> str:

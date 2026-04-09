@@ -23,3 +23,7 @@ async def verify(state: VerifyFlowState) -> dict:
         "evidence": "Stub verification passed.",
         "judge_reasoning": None,
     }
+from app.registry.base import VerificationRegistry, registry
+from app.registry.verifiers import browser, filesystem, github
+
+__all__ = ["VerificationRegistry", "registry", "browser", "filesystem", "github"]
