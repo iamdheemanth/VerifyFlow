@@ -4,8 +4,19 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -13,6 +24,10 @@ from app.db.session import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+uuid_type = Uuid(as_uuid=True)
+json_type = JSON().with_variant(JSONB, "postgresql")
 
 
 class Run(Base):
@@ -24,7 +39,7 @@ class Run(Base):
         ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
@@ -60,9 +75,9 @@ class Task(Base):
         ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
     run_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
+        uuid_type,
         ForeignKey("runs.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -70,9 +85,9 @@ class Task(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     success_criteria: Mapped[str] = mapped_column(Text, nullable=False)
     tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    tool_params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    tool_params: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
-    claimed_result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    claimed_result: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -100,14 +115,14 @@ class LedgerEntry(Base):
         ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
     task_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
+        uuid_type,
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,
     )
     run_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
+        uuid_type,
         ForeignKey("runs.id"),
         nullable=False,
     )

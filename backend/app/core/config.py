@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     llm_judge_model: str
     github_token: str
     github_owner: str
+    filesystem_allowed_paths: list[str] = ["/tmp/verifyflow"]
     max_retries: int
     verification_confidence_threshold: float
 

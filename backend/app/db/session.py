@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+import os
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -7,10 +8,18 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from app.core.config import settings
+
+def _resolve_database_url() -> str:
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        return database_url
+
+    from app.core.config import settings
+
+    return settings.database_url
 
 
-engine = create_async_engine(settings.database_url, future=True)
+engine = create_async_engine(_resolve_database_url(), future=True)
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
