@@ -10,7 +10,10 @@ class VerifyFlowState(TypedDict):
     tasks: list[dict]
     current_task_index: int
     current_task: dict | None
+    current_attempt_id: str | None
     action_claim: dict | None
     verification_result: dict | None
+    executor_telemetry: list[dict]
+    verifier_telemetry: list[dict]
     retry_count: int
     error: str | None

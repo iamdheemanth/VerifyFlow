@@ -1,28 +1,21 @@
 import Link from "next/link";
 
+import DemoSeedButton from "@/components/DemoSeedButton";
+import RecentRunsList from "@/components/RecentRunsList";
 import RunForm from "@/components/RunForm";
 import { api } from "@/lib/api";
-import type { RunSummary } from "@/types/run";
+import type { ReliabilityOverview, RunSummary } from "@/types/run";
 
 export const dynamic = "force-dynamic";
 
-function truncateGoal(goal: string) {
-  return goal.length > 60 ? `${goal.slice(0, 57)}...` : goal;
-}
-
-function statusClasses(status: string) {
-  if (status === "completed") return "bg-emerald-100 text-emerald-800";
-  if (status === "executing" || status === "planning") return "bg-amber-100 text-amber-800";
-  if (status === "failed" || status === "escalated") return "bg-rose-100 text-rose-800";
-  return "bg-slate-200 text-slate-700";
-}
-
 export default async function DashboardPage() {
   let runs: RunSummary[] = [];
+  let overview: ReliabilityOverview | null = null;
   try {
-    runs = await api.getRuns();
+    [runs, overview] = await Promise.all([api.getRuns(), api.getOverview()]);
   } catch {
     runs = [];
+    overview = null;
   }
 
   return (
@@ -55,42 +48,56 @@ export default async function DashboardPage() {
               <h2 className="text-2xl font-semibold text-slate-950">Recent Runs</h2>
               <p className="mt-1 text-sm text-slate-500">Newest first, with quick status and task counts.</p>
             </div>
-            <div className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
-              {runs.length} total
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
+                {runs.length} total
+              </div>
+              <DemoSeedButton />
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4">
-            {runs.map((run) => (
-              <Link
-                key={run.id}
-                href={`/runs/${run.id}`}
-                className="group rounded-[1.5rem] border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{run.id}</p>
-                    <h3 className="mt-2 text-lg font-semibold text-slate-900 group-hover:text-slate-950">
-                      {truncateGoal(run.goal)}
-                    </h3>
-                  </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusClasses(run.status)}`}>
-                    {run.status}
-                  </span>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
-                  <span>Created {new Date(run.created_at).toLocaleString()}</span>
-                  <span>{run.task_count} tasks</span>
-                </div>
-              </Link>
-            ))}
-
-            {runs.length === 0 ? (
-              <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-slate-500">
-                No runs yet. Create the first one above.
-              </div>
-            ) : null}
+          <div className="mt-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Runs</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{overview?.total_runs ?? 0}</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Completed</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-700">{overview?.completed_runs ?? 0}</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Failed</p>
+              <p className="mt-2 text-2xl font-semibold text-rose-700">{overview?.failed_runs ?? 0}</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Escalated</p>
+              <p className="mt-2 text-2xl font-semibold text-amber-700">{overview?.escalated_runs ?? 0}</p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Avg confidence</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">
+                {overview ? `${Math.round(overview.average_confidence * 100)}%` : "—"}
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Token volume</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-950">{overview?.total_tokens ?? 0}</p>
+            </div>
           </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/review" className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+              Review Queue
+            </Link>
+            <Link href="/benchmarks" className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              Benchmarks
+            </Link>
+            <Link href="/configs" className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              Config Comparison
+            </Link>
+          </div>
+
+          <RecentRunsList initialRuns={runs} />
         </section>
       </div>
     </main>

@@ -59,6 +59,41 @@ async def test_chat_json_strips_markdown_fences(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
+async def test_chat_json_extracts_json_object_from_extra_text(monkeypatch: pytest.MonkeyPatch):
+    llm_module = load_llm_module(monkeypatch)
+
+    create_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='Here is the result: {"verified": true, "confidence": 1.0}'
+                    )
+                )
+            ]
+        )
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+    )
+    async_openai_mock = Mock(return_value=fake_client)
+    monkeypatch.setattr(llm_module, "AsyncOpenAI", async_openai_mock)
+
+    client = llm_module.LLMClient(
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        model="executor-model",
+    )
+
+    result = await client.chat_json(
+        messages=[{"role": "user", "content": "verify this"}],
+        schema_hint="{verified: boolean, confidence: number}",
+    )
+
+    assert result == {"verified": True, "confidence": 1.0}
+
+
+@pytest.mark.asyncio
 async def test_chat_retries_twice_before_success(monkeypatch: pytest.MonkeyPatch):
     llm_module = load_llm_module(monkeypatch)
 

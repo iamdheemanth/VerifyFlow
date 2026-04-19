@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.registry.base import VerificationRegistry, registry
+from app.registry.verifiers.browser import verify_browser_click
 from app.registry.verifiers import github as github_verifiers
 from app.schemas.verification import VerificationResult
 
@@ -60,3 +61,44 @@ async def test_github_file_verifier_returns_verified_when_file_exists(monkeypatc
     assert result.verified is True
     assert result.confidence == 1.0
     assert "README.md" in result.evidence
+
+
+@pytest.mark.asyncio
+async def test_browser_click_verifier_checks_expected_text_in_result():
+    result = await verify_browser_click(
+        {
+            "tool_name": "browser.click",
+            "params": {"selector": 'button[type="submit"]', "expected_text": "Wikipedia"},
+            "claimed_success": True,
+            "result": {
+                "is_error": False,
+                "structured_content": {
+                    "success": True,
+                    "page_title": "Wikipedia - DuckDuckGo",
+                    "matched_text": True,
+                },
+                "content": [{"type": "text", "text": "Wikipedia results loaded"}],
+            },
+        }
+    )
+
+    assert result.verified is True
+    assert result.confidence == 1.0
+
+
+@pytest.mark.asyncio
+async def test_browser_fill_verifier_returns_full_confidence_on_success():
+    result = await registry.verify(
+        {
+            "tool_name": "browser.fill",
+            "params": {"selectors": ['input[name="q"]'], "value": "Wikipedia"},
+            "claimed_success": True,
+            "result": {
+                "is_error": False,
+                "structured_content": {"filled": True, "selector_used": 'input[name="q"]'},
+            },
+        }
+    )
+
+    assert result.verified is True
+    assert result.confidence == 1.0

@@ -3,6 +3,8 @@ import type { LedgerEntry, Task } from "@/types/run";
 type TaskCardProps = {
   task: Task;
   ledgerEntries: LedgerEntry[];
+  onDelete?: (taskId: string) => void;
+  deleting?: boolean;
 };
 
 function cardTone(status: string) {
@@ -20,7 +22,7 @@ function badgeTone(status: string) {
   return "bg-slate-100 text-slate-700";
 }
 
-export default function TaskCard({ task, ledgerEntries }: TaskCardProps) {
+export default function TaskCard({ task, ledgerEntries, onDelete, deleting = false }: TaskCardProps) {
   const taskEntries = ledgerEntries.filter((entry) => entry.task_id === task.id);
   const latestEntry = taskEntries.at(-1);
   const claimedResultSummary = task.claimed_result
@@ -37,9 +39,21 @@ export default function TaskCard({ task, ledgerEntries }: TaskCardProps) {
           <h3 className="mt-2 text-lg font-semibold text-slate-950">{task.description}</h3>
           <p className="mt-2 text-sm leading-6 text-slate-600">{task.success_criteria}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeTone(task.status)}`}>
-          {task.status}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeTone(task.status)}`}>
+            {task.status}
+          </span>
+          {onDelete ? (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={() => onDelete(task.id)}
+              className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">

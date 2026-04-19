@@ -30,6 +30,66 @@ uuid_type = Uuid(as_uuid=True)
 json_type = JSON().with_variant(JSONB, "postgresql")
 
 
+class ModelPromptConfig(Base):
+    __tablename__ = "model_prompt_configs"
+    __table_args__ = (
+        CheckConstraint("role IN ('executor', 'judge')", name="ck_model_prompt_configs_role"),
+    )
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False, default="v1")
+    config_metadata: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    executor_runs: Mapped[list["Run"]] = relationship(
+        back_populates="executor_config",
+        foreign_keys="Run.executor_config_id",
+    )
+    judge_runs: Mapped[list["Run"]] = relationship(
+        back_populates="judge_config",
+        foreign_keys="Run.judge_config_id",
+    )
+
+
+class BenchmarkSuite(Base):
+    __tablename__ = "benchmark_suites"
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    cases: Mapped[list["BenchmarkCase"]] = relationship(
+        back_populates="suite",
+        cascade="all, delete-orphan",
+    )
+    runs: Mapped[list["Run"]] = relationship(back_populates="benchmark_suite")
+
+
+class BenchmarkCase(Base):
+    __tablename__ = "benchmark_cases"
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    suite_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("benchmark_suites.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    goal: Mapped[str] = mapped_column(Text, nullable=False)
+    acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    label_data: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    suite: Mapped["BenchmarkSuite"] = relationship(back_populates="cases")
+    runs: Mapped[list["Run"]] = relationship(back_populates="benchmark_case")
+
+
 class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
@@ -37,12 +97,35 @@ class Run(Base):
             "status IN ('pending', 'planning', 'executing', 'completed', 'failed')",
             name="ck_runs_status",
         ),
+        CheckConstraint("kind IN ('standard', 'benchmark')", name="ck_runs_kind"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    latest_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    executor_config_id: Mapped[UUID | None] = mapped_column(
+        uuid_type,
+        ForeignKey("model_prompt_configs.id"),
+        nullable=True,
+    )
+    judge_config_id: Mapped[UUID | None] = mapped_column(
+        uuid_type,
+        ForeignKey("model_prompt_configs.id"),
+        nullable=True,
+    )
+    benchmark_suite_id: Mapped[UUID | None] = mapped_column(
+        uuid_type,
+        ForeignKey("benchmark_suites.id"),
+        nullable=True,
+    )
+    benchmark_case_id: Mapped[UUID | None] = mapped_column(
+        uuid_type,
+        ForeignKey("benchmark_cases.id"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -64,6 +147,33 @@ class Run(Base):
         back_populates="run",
         cascade="all, delete-orphan",
     )
+    telemetry: Mapped["RunTelemetry | None"] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    task_attempts: Mapped[list["TaskAttempt"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    escalations: Mapped[list["Escalation"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    executor_config: Mapped["ModelPromptConfig | None"] = relationship(
+        back_populates="executor_runs",
+        foreign_keys=[executor_config_id],
+    )
+    judge_config: Mapped["ModelPromptConfig | None"] = relationship(
+        back_populates="judge_runs",
+        foreign_keys=[judge_config_id],
+    )
+    benchmark_suite: Mapped["BenchmarkSuite | None"] = relationship(back_populates="runs")
+    benchmark_case: Mapped["BenchmarkCase | None"] = relationship(back_populates="runs")
 
 
 class Task(Base):
@@ -100,6 +210,175 @@ class Task(Base):
         back_populates="task",
         cascade="all, delete-orphan",
     )
+    task_attempts: Mapped[list["TaskAttempt"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskAttempt.attempt_index",
+    )
+    escalations: Mapped[list["Escalation"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+    reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+
+
+class TaskAttempt(Base):
+    __tablename__ = "task_attempts"
+    __table_args__ = (
+        CheckConstraint("attempt_index >= 0", name="ck_task_attempts_attempt_index"),
+        CheckConstraint(
+            "verification_method IS NULL OR verification_method IN ('deterministic', 'llm_judge', 'hybrid')",
+            name="ck_task_attempts_verification_method",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attempt_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tool_params: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    action_claim: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
+    verification_payload: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
+    execution_steps: Mapped[list[dict[str, Any]]] = mapped_column(json_type, nullable=False, default=list)
+    tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(json_type, nullable=False, default=list)
+    claimed_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    verification_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    final_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    executor_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verifier_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    token_input: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_output: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estimated_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    run: Mapped["Run"] = relationship(back_populates="task_attempts")
+    task: Mapped["Task"] = relationship(back_populates="task_attempts")
+    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(back_populates="attempt")
+
+
+class RunTelemetry(Base):
+    __tablename__ = "run_telemetry"
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    total_executor_latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_verifier_latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_task_latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_token_input: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_token_output: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_token_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_estimated_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    deterministic_verifications: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_judge_verifications: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hybrid_verifications: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    average_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )
+
+    run: Mapped["Run"] = relationship(back_populates="telemetry")
+
+
+class Escalation(Base):
+    __tablename__ = "escalations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_review', 'approved', 'rejected', 'sent_back')",
+            name="ck_escalations_status",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending_review")
+    failure_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_bundle: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    run: Mapped["Run"] = relationship(back_populates="escalations")
+    task: Mapped["Task"] = relationship(back_populates="escalations")
+    reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
+        back_populates="escalation",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReviewerDecision(Base):
+    __tablename__ = "reviewer_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('approve', 'reject', 'send_back')",
+            name="ck_reviewer_decisions_decision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    escalation_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("escalations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        uuid_type,
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reviewer_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    decision: Mapped[str] = mapped_column(String(32), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    escalation: Mapped["Escalation"] = relationship(back_populates="reviewer_decisions")
+    run: Mapped["Run"] = relationship(back_populates="reviewer_decisions")
+    task: Mapped["Task"] = relationship(back_populates="reviewer_decisions")
 
 
 class LedgerEntry(Base):
@@ -126,6 +405,11 @@ class LedgerEntry(Base):
         ForeignKey("runs.id"),
         nullable=False,
     )
+    attempt_id: Mapped[UUID | None] = mapped_column(
+        uuid_type,
+        ForeignKey("task_attempts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     verification_method: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -139,3 +423,4 @@ class LedgerEntry(Base):
 
     task: Mapped["Task"] = relationship(back_populates="ledger_entries")
     run: Mapped["Run"] = relationship(back_populates="ledger_entries")
+    attempt: Mapped["TaskAttempt | None"] = relationship(back_populates="ledger_entries")

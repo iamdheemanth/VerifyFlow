@@ -27,6 +27,7 @@ async def get_ledger(run_id: UUID, db: AsyncSession = Depends(get_db)) -> list[d
             "id": str(entry.id),
             "run_id": str(entry.run_id),
             "task_id": str(entry.task_id),
+            "attempt_id": str(entry.attempt_id) if entry.attempt_id else None,
             "task_description": entry.task.description if entry.task else "",
             "verification_method": entry.verification_method,
             "confidence": entry.confidence,

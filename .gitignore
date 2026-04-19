@@ -47,6 +47,7 @@ Thumbs.db
 # Playwright
 playwright-report/
 test-results/
+backend/.playwright-mcp/
 
 # Secrets (never commit these)
 *.pem

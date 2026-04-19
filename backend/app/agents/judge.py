@@ -91,6 +91,7 @@ async def evaluate(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
     ledger_entry = LedgerEntry(
         task_id=task.id,
         run_id=task.run_id,
+        attempt_id=UUID(state["current_attempt_id"]) if state.get("current_attempt_id") else None,
         verification_method="llm_judge",
         confidence=judge_result.confidence,
         verified=judge_result.verified,

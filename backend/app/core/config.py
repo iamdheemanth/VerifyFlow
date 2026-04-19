@@ -1,4 +1,13 @@
+import tempfile
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_FILESYSTEM_ALLOWED_PATHS = [
+    "/tmp/verifyflow",
+    str(Path(tempfile.gettempdir()) / "verifyflow"),
+]
 
 
 class Settings(BaseSettings):
@@ -9,7 +18,8 @@ class Settings(BaseSettings):
     llm_judge_model: str
     github_token: str
     github_owner: str
-    filesystem_allowed_paths: list[str] = ["/tmp/verifyflow"]
+    filesystem_allowed_paths: list[str] = DEFAULT_FILESYSTEM_ALLOWED_PATHS
+    browser_channels: list[str] = ["msedge", "chrome", "chromium"]
     max_retries: int
     verification_confidence_threshold: float
 

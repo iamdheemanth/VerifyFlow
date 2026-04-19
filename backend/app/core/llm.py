@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Sequence
 from typing import Any
 
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.telemetry import record_llm_call
 
 
 class LLMClient:
@@ -28,12 +30,27 @@ class LLMClient:
 
         for attempt in range(3):
             try:
+                started_at = time.perf_counter()
                 response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     response_format=response_format,
+                )
+                latency_ms = (time.perf_counter() - started_at) * 1000
+                usage = getattr(response, "usage", None)
+                prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+                completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+                total_tokens = int(getattr(usage, "total_tokens", prompt_tokens + completion_tokens) or 0)
+                record_llm_call(
+                    role="executor" if self is executor_llm else "judge",
+                    provider=self.base_url,
+                    model_name=self.model,
+                    latency_ms=latency_ms,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
                 )
                 content = response.choices[0].message.content
                 if isinstance(content, str):
@@ -70,11 +87,13 @@ class LLMClient:
             response_format={"type": "json_object"},
         )
         cleaned_response = self._strip_markdown_fences(raw_response)
+        json_candidate = self._extract_json_candidate(cleaned_response)
 
         try:
-            parsed = json.loads(cleaned_response)
+            parsed = json.loads(json_candidate)
         except json.JSONDecodeError as exc:
-            raise ValueError("LLM response was not valid JSON") from exc
+            snippet = json_candidate[:200] if json_candidate else "<empty response>"
+            raise ValueError(f"LLM response was not valid JSON: {snippet}") from exc
 
         if not isinstance(parsed, dict):
             raise ValueError("LLM response JSON must decode to an object")
@@ -92,6 +111,22 @@ class LLMClient:
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             cleaned = "\n".join(lines).strip()
+
+        return cleaned
+
+    @staticmethod
+    def _extract_json_candidate(content: str) -> str:
+        cleaned = content.strip()
+        if not cleaned:
+            return cleaned
+
+        if cleaned.startswith("{") and cleaned.endswith("}"):
+            return cleaned
+
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return cleaned[start : end + 1].strip()
 
         return cleaned
 

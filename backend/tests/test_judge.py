@@ -234,3 +234,35 @@ async def test_confidence_below_threshold_after_max_retries_routes_to_escalate()
     }
 
     assert route_after_decide(state) == "escalate"
+
+
+@pytest.mark.asyncio
+async def test_browser_click_records_expected_text_match_without_fallback(monkeypatch: pytest.MonkeyPatch):
+    class FakeBrowser:
+        async def click(self, selector: str):
+            return {"is_error": False, "structured_content": {"clicked": True}, "content": []}
+
+        async def evaluate(self, js_expression: str):
+            if "document.title" in js_expression:
+                return {"is_error": False, "structured_content": {"result": "English Wikipedia"}}
+            return {
+                "is_error": False,
+                "structured_content": {"result": "The Free Encyclopedia and other content"},
+            }
+
+        async def navigate(self, url: str):
+            return {"is_error": False, "structured_content": {"success": True}, "content": []}
+
+    monkeypatch.setattr(executor_module, "_get_browser_client", AsyncMock(return_value=FakeBrowser()))
+
+    result = await executor_module._call_browser(
+        "browser.click",
+        {
+            "selectors": ["link=English", "text=English"],
+            "expected_text": "The Free Encyclopedia",
+        },
+    )
+
+    structured = result["structured_content"]
+    assert structured["success"] is True
+    assert structured["matched_text"] is True

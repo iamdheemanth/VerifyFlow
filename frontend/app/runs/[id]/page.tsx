@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
+import AttemptTimeline from "@/components/AttemptTimeline";
+import EscalationPanel from "@/components/EscalationPanel";
 import LedgerTable from "@/components/LedgerTable";
+import RunTelemetrySummary from "@/components/RunTelemetrySummary";
 import TaskCard from "@/components/TaskCard";
 import { api } from "@/lib/api";
 import type { LedgerEntry, Run, RunStreamEvent } from "@/types/run";
@@ -17,39 +20,49 @@ function statusTone(status: string) {
 }
 
 export default function RunDetailPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const runId = params.id;
   const [run, setRun] = useState<Run | null>(null);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
   const [streamState, setStreamState] = useState("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+  const refreshInFlightRef = useRef(false);
+  const lastStreamRunIdRef = useRef<string | null>(null);
+  const refreshRunDataRef = useRef<() => Promise<void>>(async () => {});
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const [runData, ledgerData] = await Promise.all([api.getRun(runId), api.getLedger(runId)]);
-        if (!cancelled) {
-          setRun(runData);
-          setLedgerEntries(ledgerData);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load run.");
-        }
-      }
+  refreshRunDataRef.current = async () => {
+    if (!runId || refreshInFlightRef.current) {
+      return;
     }
 
-    void load();
-    return () => {
-      cancelled = true;
-    };
+    refreshInFlightRef.current = true;
+    try {
+      const [runData, ledgerData] = await Promise.all([api.getRun(runId), api.getLedger(runId)]);
+      setRun(runData);
+      setLedgerEntries(ledgerData);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load run.");
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    void refreshRunDataRef.current();
   }, [runId]);
 
   useEffect(() => {
     if (!runId) return;
 
+    if (lastStreamRunIdRef.current === runId && streamCleanupRef.current) {
+      return streamCleanupRef.current;
+    }
+
+    setStreamState("connecting");
     const cleanup = api.streamRun(runId, async (event: RunStreamEvent) => {
       if (event.type === "error") {
         setStreamState("disconnected");
@@ -71,22 +84,49 @@ export default function RunDetailPage() {
         );
       }
 
-      try {
-        const [runData, ledgerData] = await Promise.all([api.getRun(runId), api.getLedger(runId)]);
-        setRun(runData);
-        setLedgerEntries(ledgerData);
-      } catch {
-        setStreamState("disconnected");
-      }
+      await refreshRunDataRef.current();
     });
 
-    return cleanup;
+    streamCleanupRef.current = cleanup;
+    lastStreamRunIdRef.current = runId;
+
+    return () => {
+      cleanup();
+      if (streamCleanupRef.current === cleanup) {
+        streamCleanupRef.current = null;
+        lastStreamRunIdRef.current = null;
+      }
+    };
   }, [runId]);
 
   const orderedTasks = useMemo(
     () => (run ? [...run.tasks].sort((a, b) => a.index - b.index) : []),
     [run]
   );
+
+  async function handleDeleteTask(taskId: string) {
+    if (!run) return;
+
+    setError(null);
+    setDeletingTaskId(taskId);
+    try {
+      await api.deleteTask(run.id, taskId);
+      setRun((current) =>
+        current
+          ? {
+              ...current,
+              tasks: current.tasks.filter((task) => task.id !== taskId),
+            }
+          : current
+      );
+      setLedgerEntries((current) => current.filter((entry) => entry.task_id !== taskId));
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete task.");
+    } finally {
+      setDeletingTaskId(null);
+    }
+  }
 
   if (error) {
     return <div className="min-h-screen bg-stone-100 px-6 py-10 text-rose-700">{error}</div>;
@@ -117,7 +157,32 @@ export default function RunDetailPage() {
                 {run.status}
               </span>
               <span className="text-xs uppercase tracking-[0.2em] text-slate-400">stream: {streamState}</span>
+              <span className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                kind: {run.kind}
+              </span>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-950">Reliability Telemetry</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Latency, retries, token usage, cost, and verification mix for this run.
+              </p>
+            </div>
+            <div className="grid gap-1 text-right text-sm text-slate-500">
+              <span>Executor config: {run.executor_config?.name ?? "Default"}</span>
+              <span>Judge config: {run.judge_config?.name ?? "Default"}</span>
+              <span>
+                Benchmark: {run.benchmark_case?.name ?? "Standard run"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <RunTelemetrySummary telemetry={run.telemetry} />
           </div>
         </section>
 
@@ -131,7 +196,13 @@ export default function RunDetailPage() {
             </div>
             <div className="mt-5 grid gap-4">
               {orderedTasks.map((task) => (
-                <TaskCard key={task.id} task={task} ledgerEntries={ledgerEntries} />
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  ledgerEntries={ledgerEntries}
+                  onDelete={handleDeleteTask}
+                  deleting={deletingTaskId === task.id}
+                />
               ))}
             </div>
           </div>
@@ -146,6 +217,40 @@ export default function RunDetailPage() {
             <div className="mt-5">
               <LedgerTable entries={ledgerEntries} />
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-950">Failure Analysis</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Replay execution attempts and compare what was planned, claimed, and verified.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
+              {run.task_attempts.length} attempts
+            </span>
+          </div>
+          <div className="mt-5">
+            <AttemptTimeline attempts={run.task_attempts} />
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-950">Human Review</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Escalations, evidence bundles, and reviewer decisions live here.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
+              {run.escalations.length} escalations
+            </span>
+          </div>
+          <div className="mt-5">
+            <EscalationPanel escalations={run.escalations} />
           </div>
         </section>
       </div>
