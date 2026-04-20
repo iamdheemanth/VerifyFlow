@@ -1,169 +1,103 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import type { FormEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
-import type { BenchmarkCase, ModelPromptConfig } from "@/types/run";
 
 export default function RunForm() {
   const router = useRouter();
   const [goal, setGoal] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
-  const [configs, setConfigs] = useState<ModelPromptConfig[]>([]);
-  const [benchmarkCases, setBenchmarkCases] = useState<BenchmarkCase[]>([]);
-  const [executorConfigId, setExecutorConfigId] = useState("");
-  const [judgeConfigId, setJudgeConfigId] = useState("");
-  const [benchmarkCaseId, setBenchmarkCaseId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadMetadata() {
-      try {
-        const [configRows, benchmarkRows] = await Promise.all([
-          api.getConfigurations(),
-          api.getBenchmarkCases(),
-        ]);
-        if (cancelled) {
-          return;
-        }
-        setConfigs(configRows);
-        setBenchmarkCases(benchmarkRows);
-      } catch {
-        if (!cancelled) {
-          setConfigs([]);
-          setBenchmarkCases([]);
-        }
-      }
-    }
-
-    void loadMetadata();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const executorConfigs = useMemo(
-    () => configs.filter((config) => config.role === "executor"),
-    [configs]
-  );
-  const judgeConfigs = useMemo(
-    () => configs.filter((config) => config.role === "judge"),
-    [configs]
-  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    setError("");
+    setIsLoading(true);
 
-    startTransition(async () => {
-      try {
-        const run = await api.createRun({
-          goal,
-          acceptance_criteria: acceptanceCriteria || null,
-          executor_config_id: executorConfigId || null,
-          judge_config_id: judgeConfigId || null,
-          benchmark_case_id: benchmarkCaseId || null,
-        });
-        router.push(`/runs/${run.id}`);
-      } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Failed to create run.");
-      }
-    });
+    try {
+      const result = await api.createRun({
+        goal,
+        acceptance_criteria: acceptanceCriteria || null,
+      });
+      router.push(`/runs/${result.id}`);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error ? submitError.message : "Failed to create run."
+      );
+      setIsLoading(false);
+    }
   }
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-200">Goal</span>
+      <label>
+        <span className="block text-[10px] uppercase tracking-widest text-[#9C8C80] mb-1.5">
+          Goal
+        </span>
         <textarea
           value={goal}
           onChange={(event) => setGoal(event.target.value)}
+          rows={3}
           required
-          rows={4}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-400 focus:border-amber-400"
-          placeholder="Describe what VerifyFlow should accomplish."
+          placeholder="Describe what the AI agent should accomplish…"
+          className="w-full bg-[#2D2520] border border-[#3D3028] rounded-xl px-4 py-3 text-white text-sm placeholder-[#7A6E68] focus:outline-none focus:border-[#6B5B4E] resize-none"
         />
       </label>
 
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-200">Acceptance Criteria</span>
+      <label>
+        <span className="block text-[10px] uppercase tracking-widest text-[#9C8C80] mb-1.5">
+          Acceptance Criteria
+        </span>
         <textarea
           value={acceptanceCriteria}
           onChange={(event) => setAcceptanceCriteria(event.target.value)}
-          rows={4}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-400 focus:border-amber-400"
-          placeholder="Optional: define what success should look like."
+          rows={2}
+          placeholder="How should success be judged?"
+          className="w-full bg-[#2D2520] border border-[#3D3028] rounded-xl px-4 py-3 text-white text-sm placeholder-[#7A6E68] focus:outline-none focus:border-[#6B5B4E] resize-none"
         />
       </label>
 
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-200">Executor Config</span>
-        <select
-          value={executorConfigId}
-          onChange={(event) => setExecutorConfigId(event.target.value)}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-400"
+      <div>
+        <button
+          type="submit"
+          disabled={isLoading || goal.trim().length === 0}
+          className="w-full bg-[#C8A882] hover:bg-[#D4B592] text-[#1A1410] font-semibold rounded-xl py-3 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <option value="" className="text-slate-950">
-            Default executor
-          </option>
-          {executorConfigs.map((config) => (
-            <option key={config.id} value={config.id} className="text-slate-950">
-              {config.name} · {config.model_name}
-            </option>
-          ))}
-        </select>
-      </label>
+          {isLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-90"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"
+                />
+              </svg>
+              Starting…
+            </span>
+          ) : (
+            "Start Run →"
+          )}
+        </button>
 
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-200">Judge Config</span>
-        <select
-          value={judgeConfigId}
-          onChange={(event) => setJudgeConfigId(event.target.value)}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-400"
-        >
-          <option value="" className="text-slate-950">
-            Default judge
-          </option>
-          {judgeConfigs.map((config) => (
-            <option key={config.id} value={config.id} className="text-slate-950">
-              {config.name} · {config.model_name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-slate-200">Benchmark Case</span>
-        <select
-          value={benchmarkCaseId}
-          onChange={(event) => setBenchmarkCaseId(event.target.value)}
-          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-400"
-        >
-          <option value="" className="text-slate-950">
-            Standard run
-          </option>
-          {benchmarkCases.map((benchmarkCase) => (
-            <option key={benchmarkCase.id} value={benchmarkCase.id} className="text-slate-950">
-              {benchmarkCase.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-
-      <button
-        type="submit"
-        disabled={isPending || goal.trim().length === 0}
-        className="rounded-full bg-amber-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:text-slate-200"
-      >
-        {isPending ? "Creating..." : "Start Run"}
-      </button>
+        {error ? <p className="text-[#F87171] text-xs mt-2">{error}</p> : null}
+      </div>
     </form>
   );
 }
