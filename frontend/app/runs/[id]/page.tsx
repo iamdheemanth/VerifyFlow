@@ -1,259 +1,161 @@
-"use client";
-
-import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
 
-import AttemptTimeline from "@/components/AttemptTimeline";
-import EscalationPanel from "@/components/EscalationPanel";
-import LedgerTable from "@/components/LedgerTable";
-import RunTelemetrySummary from "@/components/RunTelemetrySummary";
-import TaskCard from "@/components/TaskCard";
+import StatusBadge from "@/components/StatusBadge";
 import { api } from "@/lib/api";
-import type { LedgerEntry, Run, RunStreamEvent } from "@/types/run";
+import type { Run } from "@/types/run";
 
-function statusTone(status: string) {
-  if (status === "verified" || status === "completed") return "bg-emerald-100 text-emerald-800";
-  if (status === "claimed" || status === "executing" || status === "planning") return "bg-amber-100 text-amber-800";
-  if (status === "failed" || status === "escalated") return "bg-rose-100 text-rose-800";
-  return "bg-slate-200 text-slate-700";
+export const dynamic = "force-dynamic";
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString();
 }
 
-export default function RunDetailPage() {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
-  const runId = params.id;
-  const [run, setRun] = useState<Run | null>(null);
-  const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
-  const [streamState, setStreamState] = useState("connecting");
-  const [error, setError] = useState<string | null>(null);
-  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
-  const streamCleanupRef = useRef<(() => void) | null>(null);
-  const refreshInFlightRef = useRef(false);
-  const lastStreamRunIdRef = useRef<string | null>(null);
-  const refreshRunDataRef = useRef<() => Promise<void>>(async () => {});
-
-  refreshRunDataRef.current = async () => {
-    if (!runId || refreshInFlightRef.current) {
-      return;
-    }
-
-    refreshInFlightRef.current = true;
-    try {
-      const [runData, ledgerData] = await Promise.all([api.getRun(runId), api.getLedger(runId)]);
-      setRun(runData);
-      setLedgerEntries(ledgerData);
-      setError(null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load run.");
-    } finally {
-      refreshInFlightRef.current = false;
-    }
-  };
-
-  useEffect(() => {
-    void refreshRunDataRef.current();
-  }, [runId]);
-
-  useEffect(() => {
-    if (!runId) return;
-
-    if (lastStreamRunIdRef.current === runId && streamCleanupRef.current) {
-      return streamCleanupRef.current;
-    }
-
-    setStreamState("connecting");
-    const cleanup = api.streamRun(runId, async (event: RunStreamEvent) => {
-      if (event.type === "error") {
-        setStreamState("disconnected");
-        return;
-      }
-
-      setStreamState(event.type === "run_complete" ? "complete" : "live");
-
-      if (event.type === "task_update") {
-        setRun((current) =>
-          current
-            ? {
-                ...current,
-                tasks: current.tasks.map((task) =>
-                  task.id === event.task_id ? { ...task, status: event.status } : task
-                ),
-              }
-            : current
-        );
-      }
-
-      await refreshRunDataRef.current();
-    });
-
-    streamCleanupRef.current = cleanup;
-    lastStreamRunIdRef.current = runId;
-
-    return () => {
-      cleanup();
-      if (streamCleanupRef.current === cleanup) {
-        streamCleanupRef.current = null;
-        lastStreamRunIdRef.current = null;
-      }
-    };
-  }, [runId]);
-
-  const orderedTasks = useMemo(
-    () => (run ? [...run.tasks].sort((a, b) => a.index - b.index) : []),
-    [run]
+function SkeletonCard({
+  title,
+  lines = 3,
+}: {
+  title: string;
+  lines?: number;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-[#1A1410]">{title}</h2>
+        <div className="skeleton h-4 w-16" />
+      </div>
+      <div className="mt-4 space-y-3">
+        {Array.from({ length: lines }).map((_, index) => (
+          <div
+            key={`${title}-${index}`}
+            className={`skeleton h-4 ${index === lines - 1 ? "w-2/3" : "w-full"}`}
+          />
+        ))}
+      </div>
+    </div>
   );
+}
 
-  async function handleDeleteTask(taskId: string) {
-    if (!run) return;
+function ErrorState() {
+  return (
+    <div className="max-w-7xl mx-auto px-6 py-8 md:px-10">
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-full max-w-md rounded-2xl border border-[#E2DAD0] bg-white p-8 text-center shadow-sm">
+          <svg
+            aria-hidden="true"
+            className="mx-auto h-10 w-10 text-[#C8BEB2]"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+            />
+          </svg>
+          <h1 className="mt-4 text-xl font-semibold text-[#1A1410]">
+            Run not found
+          </h1>
+          <p className="mt-2 text-sm text-[#5C5248]">
+            The run you requested could not be loaded.
+          </p>
+          <Link
+            href="/runs"
+            className="mt-6 inline-flex items-center rounded-xl bg-[#1A1410] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2D2520]"
+          >
+            Back to runs
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-    setError(null);
-    setDeletingTaskId(taskId);
-    try {
-      await api.deleteTask(run.id, taskId);
-      setRun((current) =>
-        current
-          ? {
-              ...current,
-              tasks: current.tasks.filter((task) => task.id !== taskId),
-            }
-          : current
-      );
-      setLedgerEntries((current) => current.filter((entry) => entry.task_id !== taskId));
-      router.refresh();
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete task.");
-    } finally {
-      setDeletingTaskId(null);
-    }
-  }
+export default async function RunDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  let run: Run;
 
-  if (error) {
-    return <div className="min-h-screen bg-stone-100 px-6 py-10 text-rose-700">{error}</div>;
-  }
-
-  if (!run) {
-    return <div className="min-h-screen bg-stone-100 px-6 py-10 text-slate-500">Loading run...</div>;
+  try {
+    run = await api.getRun(id);
+  } catch {
+    return <ErrorState />;
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f6f1e6_0%,#efe9de_100%)] px-6 py-10 text-slate-900 md:px-10">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <Link href="/dashboard" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-          ← Back to dashboard
-        </Link>
-
-        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-8 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-4xl">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{run.id}</p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{run.goal}</h1>
-              {run.acceptance_criteria ? (
-                <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600">{run.acceptance_criteria}</p>
-              ) : null}
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusTone(run.status)}`}>
-                {run.status}
-              </span>
-              <span className="text-xs uppercase tracking-[0.2em] text-slate-400">stream: {streamState}</span>
-              <span className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                kind: {run.kind}
+    <div className="max-w-7xl mx-auto px-6 py-8 md:px-10 space-y-6 page-enter">
+      <section className="bg-white border border-[#E2DAD0] rounded-2xl p-6 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center min-w-0">
+              <Link
+                href="/runs"
+                className="text-[#9C948A] hover:text-[#5C5248] text-sm"
+              >
+                Runs
+              </Link>
+              <span className="text-[#C8BEB2] mx-1">/</span>
+              <span className="text-[#5C5248] text-sm truncate max-w-md">
+                {run.goal}
               </span>
             </div>
-          </div>
-        </section>
 
-        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-950">Reliability Telemetry</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Latency, retries, token usage, cost, and verification mix for this run.
-              </p>
-            </div>
-            <div className="grid gap-1 text-right text-sm text-slate-500">
-              <span>Executor config: {run.executor_config?.name ?? "Default"}</span>
-              <span>Judge config: {run.judge_config?.name ?? "Default"}</span>
-              <span>
-                Benchmark: {run.benchmark_case?.name ?? "Standard run"}
+            <h1 className="text-2xl font-semibold text-[#1A1410] mt-2 leading-tight">
+              {run.goal}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <StatusBadge status={run.status} />
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                  run.kind === "benchmark"
+                    ? "bg-[#DBEAFE] text-[#1E40AF]"
+                    : "bg-[#EEE9E1] text-[#5C5248]"
+                }`}
+              >
+                {run.kind === "benchmark" ? "Benchmark" : "Standard"}
+              </span>
+              <span className="font-[family-name:var(--font-geist-mono)] text-[10px] text-[#9C948A] bg-[#EEE9E1] px-2 py-1 rounded-lg">
+                {run.id}
               </span>
             </div>
           </div>
 
-          <div className="mt-5">
-            <RunTelemetrySummary telemetry={run.telemetry} />
+          <div className="text-xs text-[#9C948A] lg:text-right shrink-0">
+            <p>Created {formatDate(run.created_at)}</p>
+            <p className="mt-1">Updated {formatDate(run.updated_at)}</p>
           </div>
-        </section>
+        </div>
 
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-slate-950">Tasks</h2>
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                {orderedTasks.length} total
-              </span>
-            </div>
-            <div className="mt-5 grid gap-4">
-              {orderedTasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  ledgerEntries={ledgerEntries}
-                  onDelete={handleDeleteTask}
-                  deleting={deletingTaskId === task.id}
-                />
-              ))}
-            </div>
+        {run.acceptance_criteria ? (
+          <div className="bg-[#EEE9E1] rounded-xl px-4 py-3 mt-4">
+            <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+              Acceptance Criteria
+            </p>
+            <p className="text-sm text-[#5C5248] italic mt-1">
+              {run.acceptance_criteria}
+            </p>
           </div>
+        ) : null}
+      </section>
 
-          <div className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-slate-950">Verification Ledger</h2>
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
-                {ledgerEntries.length} events
-              </span>
-            </div>
-            <div className="mt-5">
-              <LedgerTable entries={ledgerEntries} />
-            </div>
-          </div>
-        </section>
+      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        <div className="space-y-6">
+          <SkeletonCard title="Tasks Section" lines={4} />
+          <SkeletonCard title="Attempts Section" lines={5} />
+          <SkeletonCard title="Ledger Section" lines={4} />
+        </div>
 
-        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-950">Failure Analysis</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Replay execution attempts and compare what was planned, claimed, and verified.
-              </p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
-              {run.task_attempts.length} attempts
-            </span>
-          </div>
-          <div className="mt-5">
-            <AttemptTimeline attempts={run.task_attempts} />
-          </div>
-        </section>
-
-        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-950">Human Review</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Escalations, evidence bundles, and reviewer decisions live here.
-              </p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">
-              {run.escalations.length} escalations
-            </span>
-          </div>
-          <div className="mt-5">
-            <EscalationPanel escalations={run.escalations} />
-          </div>
-        </section>
+        <div className="space-y-6">
+          <SkeletonCard title="Telemetry Card" lines={3} />
+          <SkeletonCard title="Escalations Card" lines={4} />
+          <SkeletonCard title="Config Card" lines={3} />
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
