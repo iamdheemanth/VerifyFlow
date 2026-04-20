@@ -16,4 +16,7 @@ class VerifyFlowState(TypedDict):
     executor_telemetry: list[dict]
     verifier_telemetry: list[dict]
     retry_count: int
+    decision: str | None
+    retryable: bool
+    escalation_reason: str | None
     error: str | None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from collections.abc import Mapping
@@ -9,6 +10,33 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult
+
+
+class MCPToolError(RuntimeError):
+    def __init__(self, message: str, *, tool_name: str, category: str, retryable: bool) -> None:
+        super().__init__(message)
+        self.tool_name = tool_name
+        self.category = category
+        self.retryable = retryable
+
+    def to_error_details(self, *, source: str) -> dict[str, Any]:
+        return {
+            "message": str(self),
+            "category": self.category,
+            "retryable": self.retryable,
+            "tool_name": self.tool_name,
+            "source": source,
+        }
+
+
+def _classify_mcp_exception(tool_name: str, exc: Exception) -> MCPToolError:
+    message = str(exc)
+    lowered = message.lower()
+    if any(marker in lowered for marker in ("timeout", "timed out", "deadline exceeded")):
+        return MCPToolError(message, tool_name=tool_name, category="timeout", retryable=True)
+    if any(marker in lowered for marker in ("connection reset", "connection refused", "broken pipe", "generatorexit", "cancel scope", "session is not initialized", "stdio")):
+        return MCPToolError(message, tool_name=tool_name, category="mcp_session_failure", retryable=True)
+    return MCPToolError(message, tool_name=tool_name, category="tool_error", retryable=False)
 
 
 class BaseMCPClient:
@@ -33,11 +61,21 @@ class BaseMCPClient:
     @property
     def session(self) -> ClientSession:
         if self._session is None:
-            raise RuntimeError("MCP session is not initialized. Use the client in an async with block.")
+            raise MCPToolError(
+                "MCP session is not initialized. Use the client in an async with block.",
+                tool_name="session",
+                category="mcp_session_failure",
+                retryable=True,
+            )
         return self._session
 
     async def _call_tool(self, tool_name: str, arguments: dict[str, Any] | None = None) -> CallToolResult:
-        return await self.session.call_tool(tool_name, arguments or {})
+        try:
+            return await asyncio.wait_for(self.session.call_tool(tool_name, arguments or {}), timeout=30)
+        except Exception as exc:
+            if isinstance(exc, MCPToolError):
+                raise
+            raise _classify_mcp_exception(tool_name, exc) from exc
 
 
 def normalize_tool_result(result: CallToolResult) -> dict[str, Any]:
@@ -54,6 +92,16 @@ def normalize_tool_result(result: CallToolResult) -> dict[str, Any]:
             payload["content"].append(dict(item))
         else:
             payload["content"].append({"value": str(item)})
+
+    if result.isError:
+        error_message = extract_text(result)
+        payload["error"] = error_message or "MCP tool call failed."
+        payload["error_details"] = {
+            "message": payload["error"],
+            "category": "tool_error",
+            "retryable": False,
+            "source": "mcp",
+        }
 
     return payload
 

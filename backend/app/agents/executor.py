@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.mcp.browser import BrowserMCP
 from app.mcp.filesystem import FilesystemMCP
 from app.mcp.github import GitHubMCP
+from app.mcp import MCPToolError
 from app.models.domain import Task, utcnow
 from app.orchestrator.states import VerifyFlowState
+from app.services import reliability
 
 _browser_clients: dict[str, BrowserMCP] = {}
 _active_browser_channel: str | None = None
@@ -385,6 +387,9 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
             "claimed_at": utcnow().isoformat(),
         }
         if not claimed_success and isinstance(result, dict):
+            error_details = result.get("error_details")
+            if isinstance(error_details, dict):
+                action_claim["error_details"] = error_details
             content = result.get("content", [])
             if isinstance(content, list) and content:
                 first_item = content[0]
@@ -392,7 +397,23 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
                     text = first_item.get("text")
                     if isinstance(text, str) and text.strip():
                         action_claim["error"] = text.strip()
+            if "error" not in action_claim and isinstance(result.get("error"), str):
+                action_claim["error"] = result["error"]
+            if "error_details" not in action_claim and action_claim.get("error"):
+                action_claim["error_details"] = reliability.build_error_details(
+                    action_claim["error"],
+                    source=tool_name,
+                )
     except Exception as exc:
+        if isinstance(exc, MCPToolError):
+            error_details = exc.to_error_details(source=tool_name)
+        else:
+            error_details = reliability.build_error_details(
+                str(exc),
+                source=tool_name,
+                category="execution_error",
+                retryable=False,
+            )
         action_claim = {
             "tool_name": tool_name,
             "params": params,
@@ -400,6 +421,7 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
             "claimed_success": False,
             "claimed_at": utcnow().isoformat(),
             "error": str(exc),
+            "error_details": error_details,
         }
 
     task = await _load_task(db, current_task["id"])

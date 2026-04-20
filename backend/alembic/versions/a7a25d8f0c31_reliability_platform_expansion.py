@@ -20,6 +20,28 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _utc_now_default():
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return sa.text("CURRENT_TIMESTAMP")
+    return sa.text("TIMEZONE('utc', now())")
+
+
+def _json_array_default():
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return sa.text("'[]'")
+    return sa.text("'[]'::jsonb")
+
+
+def _json_type():
+    return sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
+
+def _is_sqlite() -> bool:
+    return op.get_bind().dialect.name == "sqlite"
+
+
 def upgrade() -> None:
     op.create_table(
         "model_prompt_configs",
@@ -29,12 +51,12 @@ def upgrade() -> None:
         sa.Column("model_name", sa.String(length=255), nullable=False),
         sa.Column("prompt_template", sa.Text(), nullable=False),
         sa.Column("prompt_version", sa.String(length=64), nullable=False, server_default="v1"),
-        sa.Column("config_metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("config_metadata", _json_type(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint(
             "role IN ('executor', 'judge')",
@@ -52,7 +74,7 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
@@ -66,12 +88,12 @@ def upgrade() -> None:
         sa.Column("goal", sa.Text(), nullable=False),
         sa.Column("acceptance_criteria", sa.Text(), nullable=True),
         sa.Column("expected_outcome", sa.String(length=32), nullable=True),
-        sa.Column("label_data", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("label_data", _json_type(), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.ForeignKeyConstraint(["suite_id"], ["benchmark_suites.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -83,35 +105,36 @@ def upgrade() -> None:
     op.add_column("runs", sa.Column("judge_config_id", postgresql.UUID(as_uuid=True), nullable=True))
     op.add_column("runs", sa.Column("benchmark_suite_id", postgresql.UUID(as_uuid=True), nullable=True))
     op.add_column("runs", sa.Column("benchmark_case_id", postgresql.UUID(as_uuid=True), nullable=True))
-    op.create_check_constraint("ck_runs_kind", "runs", "kind IN ('standard', 'benchmark')")
-    op.create_foreign_key(
-        "fk_runs_executor_config_id",
-        "runs",
-        "model_prompt_configs",
-        ["executor_config_id"],
-        ["id"],
-    )
-    op.create_foreign_key(
-        "fk_runs_judge_config_id",
-        "runs",
-        "model_prompt_configs",
-        ["judge_config_id"],
-        ["id"],
-    )
-    op.create_foreign_key(
-        "fk_runs_benchmark_suite_id",
-        "runs",
-        "benchmark_suites",
-        ["benchmark_suite_id"],
-        ["id"],
-    )
-    op.create_foreign_key(
-        "fk_runs_benchmark_case_id",
-        "runs",
-        "benchmark_cases",
-        ["benchmark_case_id"],
-        ["id"],
-    )
+    if not _is_sqlite():
+        op.create_check_constraint("ck_runs_kind", "runs", "kind IN ('standard', 'benchmark')")
+        op.create_foreign_key(
+            "fk_runs_executor_config_id",
+            "runs",
+            "model_prompt_configs",
+            ["executor_config_id"],
+            ["id"],
+        )
+        op.create_foreign_key(
+            "fk_runs_judge_config_id",
+            "runs",
+            "model_prompt_configs",
+            ["judge_config_id"],
+            ["id"],
+        )
+        op.create_foreign_key(
+            "fk_runs_benchmark_suite_id",
+            "runs",
+            "benchmark_suites",
+            ["benchmark_suite_id"],
+            ["id"],
+        )
+        op.create_foreign_key(
+            "fk_runs_benchmark_case_id",
+            "runs",
+            "benchmark_cases",
+            ["benchmark_case_id"],
+            ["id"],
+        )
 
     op.create_table(
         "task_attempts",
@@ -120,11 +143,11 @@ def upgrade() -> None:
         sa.Column("task_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("attempt_index", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("tool_name", sa.String(length=128), nullable=False),
-        sa.Column("tool_params", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("action_claim", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("verification_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("execution_steps", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("tool_calls", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column("tool_params", _json_type(), nullable=False),
+        sa.Column("action_claim", _json_type(), nullable=True),
+        sa.Column("verification_payload", _json_type(), nullable=True),
+        sa.Column("execution_steps", _json_type(), nullable=False, server_default=_json_array_default()),
+        sa.Column("tool_calls", _json_type(), nullable=False, server_default=_json_array_default()),
         sa.Column("claimed_success", sa.Boolean(), nullable=True),
         sa.Column("verification_method", sa.String(length=32), nullable=True),
         sa.Column("final_confidence", sa.Float(), nullable=True),
@@ -141,13 +164,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint("attempt_index >= 0", name="ck_task_attempts_attempt_index"),
         sa.CheckConstraint(
@@ -160,14 +183,15 @@ def upgrade() -> None:
     )
 
     op.add_column("ledger_entries", sa.Column("attempt_id", postgresql.UUID(as_uuid=True), nullable=True))
-    op.create_foreign_key(
-        "fk_ledger_entries_attempt_id",
-        "ledger_entries",
-        "task_attempts",
-        ["attempt_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    if not _is_sqlite():
+        op.create_foreign_key(
+            "fk_ledger_entries_attempt_id",
+            "ledger_entries",
+            "task_attempts",
+            ["attempt_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
     op.create_table(
         "run_telemetry",
@@ -190,13 +214,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -210,12 +234,12 @@ def upgrade() -> None:
         sa.Column("task_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="pending_review"),
         sa.Column("failure_reason", sa.Text(), nullable=False),
-        sa.Column("evidence_bundle", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("evidence_bundle", _json_type(), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
@@ -240,7 +264,7 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint(
             "decision IN ('approve', 'reject', 'send_back')",

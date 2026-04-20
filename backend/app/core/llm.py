@@ -12,6 +12,47 @@ from app.core.config import settings
 from app.core.telemetry import record_llm_call
 
 
+class LLMClientError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str,
+        retryable: bool,
+        provider: str,
+        model: str,
+        raw_output: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.retryable = retryable
+        self.provider = provider
+        self.model = model
+        self.raw_output = raw_output
+
+    def to_error_details(self, *, source: str) -> dict[str, Any]:
+        return {
+            "message": str(self),
+            "category": self.category,
+            "retryable": self.retryable,
+            "provider": self.provider,
+            "model": self.model,
+            "source": source,
+            "raw_output": self.raw_output[:500] if isinstance(self.raw_output, str) and self.raw_output else None,
+        }
+
+
+def _classify_llm_exception(exc: Exception) -> tuple[str, bool]:
+    message = str(exc).lower()
+    if any(marker in message for marker in ("429", "rate limit", "too many requests")):
+        return "rate_limited", True
+    if any(marker in message for marker in ("timeout", "timed out", "deadline exceeded")):
+        return "timeout", True
+    if any(marker in message for marker in ("connection reset", "connection refused", "temporarily unavailable", "service unavailable", "overloaded", "502", "503", "504")):
+        return "provider_unavailable", True
+    return "provider_error", True
+
+
 class LLMClient:
     def __init__(self, base_url: str, api_key: str, model: str):
         self.base_url = base_url
@@ -63,12 +104,17 @@ class LLMClient:
                 return str(content)
             except Exception as exc:
                 last_error = exc
-                if attempt == 2:
+                category, retryable = _classify_llm_exception(exc)
+                if attempt == 2 or not retryable:
                     break
                 await asyncio.sleep(2**attempt)
 
-        raise RuntimeError(
-            f"LLM request failed for provider {self.base_url} using model {self.model}: {last_error}"
+        raise LLMClientError(
+            f"LLM request failed for provider {self.base_url} using model {self.model}: {last_error}",
+            category=category if last_error is not None else "provider_error",
+            retryable=retryable if last_error is not None else True,
+            provider=self.base_url,
+            model=self.model,
         ) from last_error
 
     async def chat_json(
@@ -89,14 +135,38 @@ class LLMClient:
         cleaned_response = self._strip_markdown_fences(raw_response)
         json_candidate = self._extract_json_candidate(cleaned_response)
 
+        if not json_candidate.strip():
+            raise LLMClientError(
+                "LLM returned an empty structured response.",
+                category="malformed_response",
+                retryable=False,
+                provider=self.base_url,
+                model=self.model,
+                raw_output=raw_response,
+            )
+
         try:
             parsed = json.loads(json_candidate)
         except json.JSONDecodeError as exc:
             snippet = json_candidate[:200] if json_candidate else "<empty response>"
-            raise ValueError(f"LLM response was not valid JSON: {snippet}") from exc
+            raise LLMClientError(
+                f"LLM response was not valid JSON: {snippet}",
+                category="malformed_response",
+                retryable=False,
+                provider=self.base_url,
+                model=self.model,
+                raw_output=raw_response,
+            ) from exc
 
         if not isinstance(parsed, dict):
-            raise ValueError("LLM response JSON must decode to an object")
+            raise LLMClientError(
+                "LLM response JSON must decode to an object",
+                category="invalid_structured_output",
+                retryable=False,
+                provider=self.base_url,
+                model=self.model,
+                raw_output=raw_response,
+            )
 
         return parsed
 

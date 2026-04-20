@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -9,16 +8,13 @@ from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.db.session import _resolve_database_url, _sync_database_url
 from app.models.domain import Base
 
 config = context.config
 load_dotenv()
-database_url = os.getenv("DATABASE_URL")
-
-if not database_url:
-    raise RuntimeError("DATABASE_URL must be set for Alembic migrations.")
-
-config.set_main_option("sqlalchemy.url", database_url)
+database_url = _resolve_database_url()
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -26,13 +22,24 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _migration_url() -> str:
+    return _sync_database_url(database_url)
+
+
+def _is_sqlite_url(url: str) -> bool:
+    return url.startswith("sqlite")
+
+
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = _migration_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+        render_as_batch=_is_sqlite_url(url),
     )
 
     with context.begin_transaction():
@@ -40,7 +47,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+        render_as_batch=connection.dialect.name == "sqlite",
+    )
 
     with context.begin_transaction():
         context.run_migrations()

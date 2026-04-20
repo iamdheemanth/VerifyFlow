@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agents import executor, judge, planner
 from app.core.telemetry import begin_capture, end_capture
-from app.models.domain import Escalation, LedgerEntry, Run, Task, TaskAttempt
+from app.models.domain import Escalation, Run, Task
 from app.orchestrator.states import VerifyFlowState
 from app.registry.base import registry
 from app.registry.verifiers import browser as _browser_verifiers  # noqa: F401
@@ -24,11 +24,19 @@ from app.schemas.verification import VerificationResult
 from app.services import reliability
 
 _db_session: ContextVar[AsyncSession] = ContextVar("verifyflow_graph_db")
+_latest_state_holder: ContextVar[dict[str, Any] | None] = ContextVar("verifyflow_graph_latest_state_holder", default=None)
 logger = logging.getLogger(__name__)
 
 
 def _get_db() -> AsyncSession:
     return _db_session.get()
+
+
+def _remember_state(state: dict[str, Any]) -> dict[str, Any]:
+    holder = _latest_state_holder.get()
+    if isinstance(holder, dict):
+        holder["state"] = state
+    return state
 
 
 def _get_settings():
@@ -68,6 +76,9 @@ def _serialize_run(run: Run) -> VerifyFlowState:
         "executor_telemetry": [],
         "verifier_telemetry": [],
         "retry_count": 0,
+        "decision": None,
+        "retryable": True,
+        "escalation_reason": None,
         "error": None,
     }
 
@@ -106,18 +117,22 @@ async def _create_ledger_entry(
     attempt_id: str | None = None,
 ) -> None:
     db = _get_db()
-    entry = LedgerEntry(
-        task_id=task.id,
-        run_id=task.run_id,
-        attempt_id=UUID(attempt_id) if attempt_id else None,
-        verification_method=result["method"],
-        confidence=result["confidence"],
-        verified=result["verified"],
-        evidence=result["evidence"],
-        judge_reasoning=result.get("judge_reasoning"),
+    created = await reliability.create_ledger_entry(
+        db,
+        run_id=str(task.run_id),
+        task_id=str(task.id),
+        result=result,
+        attempt_id=attempt_id,
     )
-    db.add(entry)
-    await db.commit()
+    if not created:
+        logger.info(
+            "Skipping duplicate ledger entry for run=%s task=%s attempt=%s method=%s",
+            task.run_id,
+            task.id,
+            attempt_id,
+            result["method"],
+        )
+        return
     logger.info(
         "Ledger entry created for run=%s task=%s method=%s verified=%s confidence=%.2f",
         task.run_id,
@@ -129,6 +144,7 @@ async def _create_ledger_entry(
 
 
 async def plan_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     run = await _load_run(db, state["run_id"])
     run.status = "planning"
@@ -141,24 +157,35 @@ async def plan_node(state: VerifyFlowState) -> VerifyFlowState:
     planned_state["current_attempt_id"] = None
     planned_state["executor_telemetry"] = []
     planned_state["verifier_telemetry"] = []
+    planned_state["decision"] = None
+    planned_state["retryable"] = True
+    planned_state["escalation_reason"] = None
     logger.info("Run %s planned %s task(s)", state["run_id"], len(planned_state["tasks"]))
-    return planned_state
+    return _remember_state(planned_state)
 
 
 async def pick_task_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     tasks = await _refresh_tasks(state)
     next_task = next((task for task in tasks if task["status"] == "pending"), None)
 
     if next_task is None:
         logger.info("Run %s found no pending tasks; routing to finish", state["run_id"])
-        return {
+        return _remember_state({
             **state,
             "tasks": tasks,
+            "current_task_index": -1,
             "current_task": None,
+            "current_attempt_id": None,
             "action_claim": None,
             "verification_result": None,
+            "executor_telemetry": [],
+            "verifier_telemetry": [],
+            "decision": "finish",
+            "retryable": True,
+            "escalation_reason": None,
             "error": None,
-        }
+        })
 
     logger.info(
         "Run %s picked task %s (index=%s, status=%s)",
@@ -167,7 +194,7 @@ async def pick_task_node(state: VerifyFlowState) -> VerifyFlowState:
         next_task["index"],
         next_task["status"],
     )
-    return {
+    return _remember_state({
         **state,
         "tasks": tasks,
         "current_task_index": next_task["index"],
@@ -178,17 +205,23 @@ async def pick_task_node(state: VerifyFlowState) -> VerifyFlowState:
         "executor_telemetry": [],
         "verifier_telemetry": [],
         "retry_count": next_task["retry_count"],
+        "decision": None,
+        "retryable": True,
+        "escalation_reason": None,
         "error": None,
-    }
+    })
 
 
 async def execute_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     current_task = state["current_task"]
     if current_task is None:
         return {**state, "error": "No current task selected."}
 
     task = await _load_task(db, current_task["id"])
+    run = await _load_run(db, state["run_id"])
+    run.status = "executing"
     task.status = "executing"
     await db.commit()
     attempt = await reliability.start_task_attempt(
@@ -203,6 +236,7 @@ async def execute_node(state: VerifyFlowState) -> VerifyFlowState:
         current_task["id"],
         current_task["tool_name"],
     )
+    _remember_state({**state, "current_attempt_id": str(attempt.id)})
 
     capture_token = begin_capture()
     started_at = time.perf_counter()
@@ -219,16 +253,20 @@ async def execute_node(state: VerifyFlowState) -> VerifyFlowState:
     await reliability.refresh_run_telemetry(db, state["run_id"])
     tasks = await _refresh_tasks(updated_state)
     current_task = next(task_data for task_data in tasks if task_data["id"] == current_task["id"])
-    return {
+    return _remember_state({
         **updated_state,
         "tasks": tasks,
         "current_task": current_task,
         "current_attempt_id": str(attempt.id),
         "executor_telemetry": executor_telemetry,
-    }
+        "decision": None,
+        "retryable": True,
+        "escalation_reason": None,
+    })
 
 
 async def verify_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     current_task_data = state["current_task"]
     action_claim = state["action_claim"]
@@ -246,8 +284,14 @@ async def verify_node(state: VerifyFlowState) -> VerifyFlowState:
     )
 
     started_at = time.perf_counter()
-    verification_result = await registry.verify(action_claim)
-    verification_payload = verification_result.model_dump()
+    try:
+        verification_result = await registry.verify(action_claim)
+        verification_payload = verification_result.model_dump()
+    except Exception as exc:
+        verification_payload = reliability.build_verifier_failure_payload(
+            exc,
+            tool_name=str(action_claim.get("tool_name") or current_task_data.get("tool_name") or "unknown.tool"),
+        )
     verifier_latency_ms = (time.perf_counter() - started_at) * 1000
     await _create_ledger_entry(task, verification_payload, attempt_id=state.get("current_attempt_id"))
     await reliability.finalize_verification_attempt(
@@ -269,17 +313,21 @@ async def verify_node(state: VerifyFlowState) -> VerifyFlowState:
 
     tasks = await _refresh_tasks(state)
     current_task = next(task_data for task_data in tasks if task_data["id"] == current_task_data["id"])
-    return {
+    return _remember_state({
         **state,
         "tasks": tasks,
         "current_task": current_task,
         "verification_result": verification_payload,
         "verifier_telemetry": [],
+        "decision": None,
+        "retryable": True,
+        "escalation_reason": None,
         "error": None,
-    }
+    })
 
 
 async def judge_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     current_task = state["current_task"]
     if current_task is None:
@@ -304,18 +352,22 @@ async def judge_node(state: VerifyFlowState) -> VerifyFlowState:
         outcome="judge_verification",
     )
     await reliability.refresh_run_telemetry(db, state["run_id"])
-    tasks = await _refresh_tasks(state)
+    tasks = await _refresh_tasks(updated_state)
     current_task = next(task_data for task_data in tasks if task_data["id"] == current_task["id"])
-    return {
+    return _remember_state({
         **updated_state,
         "tasks": tasks,
         "current_task": current_task,
         "verifier_telemetry": verifier_telemetry,
+        "decision": None,
+        "retryable": True,
+        "escalation_reason": None,
         "error": None,
-    }
+    })
 
 
 async def decide_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     current_task = state["current_task"]
     verification_result = state["verification_result"]
@@ -325,35 +377,42 @@ async def decide_node(state: VerifyFlowState) -> VerifyFlowState:
 
     task = await _load_task(db, current_task["id"])
     settings = _get_settings()
+    retry_assessment = reliability.classify_retryability(
+        action_claim=state.get("action_claim"),
+        verification_result=verification_result,
+    )
 
     if verification_result["verified"] and verification_result["confidence"] >= settings.verification_confidence_threshold:
         task.status = "verified"
         await db.commit()
         next_retry_count = task.retry_count
-        attempt_result = await db.execute(
-            select(TaskAttempt).where(TaskAttempt.id == UUID(state["current_attempt_id"]))
-        ) if state.get("current_attempt_id") else None
-        attempt = attempt_result.scalar_one_or_none() if attempt_result is not None else None
-        if attempt is not None:
-            attempt.outcome = "verified"
-            await db.commit()
+        await reliability.set_attempt_outcome(
+            db,
+            attempt_id=state.get("current_attempt_id"),
+            outcome="verified",
+        )
+        decision = "pick_task"
+        retryable = True
+        escalation_reason = None
         logger.info(
             "Run %s task %s verified at confidence %.2f",
             state["run_id"],
             current_task["id"],
             verification_result["confidence"],
         )
-    elif state["retry_count"] < settings.max_retries:
+    elif retry_assessment["retryable"] and state["retry_count"] < settings.max_retries:
         task.retry_count += 1
+        task.status = "pending"
         await db.commit()
         next_retry_count = task.retry_count
-        attempt_result = await db.execute(
-            select(TaskAttempt).where(TaskAttempt.id == UUID(state["current_attempt_id"]))
-        ) if state.get("current_attempt_id") else None
-        attempt = attempt_result.scalar_one_or_none() if attempt_result is not None else None
-        if attempt is not None:
-            attempt.outcome = "retrying"
-            await db.commit()
+        await reliability.set_attempt_outcome(
+            db,
+            attempt_id=state.get("current_attempt_id"),
+            outcome="retrying",
+        )
+        decision = "execute"
+        retryable = True
+        escalation_reason = None
         logger.info(
             "Run %s task %s failed verification; retrying (%s/%s)",
             state["run_id"],
@@ -362,34 +421,41 @@ async def decide_node(state: VerifyFlowState) -> VerifyFlowState:
             settings.max_retries,
         )
     else:
+        task.status = "failed"
         await db.commit()
-        next_retry_count = settings.max_retries + 1
-        attempt_result = await db.execute(
-            select(TaskAttempt).where(TaskAttempt.id == UUID(state["current_attempt_id"]))
-        ) if state.get("current_attempt_id") else None
-        attempt = attempt_result.scalar_one_or_none() if attempt_result is not None else None
-        if attempt is not None:
-            attempt.outcome = "escalating"
-            await db.commit()
+        next_retry_count = task.retry_count
+        await reliability.set_attempt_outcome(
+            db,
+            attempt_id=state.get("current_attempt_id"),
+            outcome="escalating",
+        )
+        decision = "escalate"
+        retryable = False
+        escalation_reason = retry_assessment.get("reason")
         logger.info(
-            "Run %s task %s exhausted retries; escalating",
+            "Run %s task %s escalating after %s failure",
             state["run_id"],
             current_task["id"],
+            retry_assessment.get("category", "terminal"),
         )
 
     tasks = await _refresh_tasks(state)
     current_task = next((task_data for task_data in tasks if task_data["id"] == current_task["id"]), None)
 
-    return {
+    return _remember_state({
         **state,
         "tasks": tasks,
         "current_task": current_task,
         "retry_count": next_retry_count,
+        "decision": decision,
+        "retryable": retryable,
+        "escalation_reason": escalation_reason,
         "error": None,
-    }
+    })
 
 
 async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     current_task = state["current_task"]
     settings = _get_settings()
@@ -403,10 +469,14 @@ async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
     await db.commit()
     logger.info("Run %s task %s escalated", state["run_id"], current_task["id"])
 
-    evidence = (
-        f"Escalated after {settings.max_retries} retries. "
-        f"Last judge reasoning: {verification_result.get('judge_reasoning')}"
-    )
+    escalation_reason = state.get("escalation_reason")
+    if escalation_reason:
+        evidence = escalation_reason
+    else:
+        evidence = (
+            f"Escalated after {settings.max_retries} retries. "
+            f"Last judge reasoning: {verification_result.get('judge_reasoning')}"
+        )
     escalation = await reliability.create_escalation(
         db,
         run_id=state["run_id"],
@@ -429,13 +499,11 @@ async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
         "judge_reasoning": verification_result.get("judge_reasoning"),
     }
     await _create_ledger_entry(task, escalation_result, attempt_id=state.get("current_attempt_id"))
-    attempt_result = await db.execute(
-        select(TaskAttempt).where(TaskAttempt.id == UUID(state["current_attempt_id"]))
-    ) if state.get("current_attempt_id") else None
-    attempt = attempt_result.scalar_one_or_none() if attempt_result is not None else None
-    if attempt is not None:
-        attempt.outcome = "escalated"
-        await db.commit()
+    await reliability.set_attempt_outcome(
+        db,
+        attempt_id=state.get("current_attempt_id"),
+        outcome="escalated",
+    )
     await reliability.refresh_run_telemetry(db, state["run_id"])
 
     if db.bind is not None and db.bind.dialect.name == "postgresql":
@@ -452,18 +520,22 @@ async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
         await db.commit()
 
     tasks = await _refresh_tasks(state)
-    return {
+    return _remember_state({
         **state,
         "tasks": tasks,
         "current_task": None,
         "current_attempt_id": None,
         "action_claim": None,
         "verification_result": None,
+        "decision": "finish",
+        "retryable": False,
+        "escalation_reason": evidence,
         "error": None,
-    }
+    })
 
 
 async def finish_node(state: VerifyFlowState) -> VerifyFlowState:
+    _remember_state(state)
     db = _get_db()
     run = await _load_run(db, state["run_id"])
     tasks = await _refresh_tasks(state)
@@ -481,15 +553,18 @@ async def finish_node(state: VerifyFlowState) -> VerifyFlowState:
     await db.commit()
     await reliability.refresh_run_telemetry(db, state["run_id"])
 
-    return {
+    return _remember_state({
         **state,
         "tasks": tasks,
         "current_task": None,
         "current_attempt_id": None,
         "action_claim": None,
         "verification_result": None,
+        "decision": "finish",
+        "retryable": True,
+        "escalation_reason": None,
         "error": None,
-    }
+    })
 
 
 def route_after_pick_task(state: VerifyFlowState) -> str:
@@ -505,6 +580,10 @@ def route_after_verify(state: VerifyFlowState) -> str:
 
 
 def route_after_decide(state: VerifyFlowState) -> str:
+    decision = state.get("decision")
+    if decision in {"pick_task", "execute", "escalate"}:
+        return decision
+
     settings = _get_settings()
     result = state["verification_result"] or {}
     if result.get("verified") and result.get("confidence", 0.0) >= settings.verification_confidence_threshold:
@@ -545,10 +624,22 @@ async def run_graph(run_id: str, db: AsyncSession) -> None:
     run = await _load_run(db, run_id)
     initial_state = _serialize_run(run)
     token = _db_session.set(db)
+    latest_state_token = _latest_state_holder.set({"state": initial_state})
     try:
         logger.info("Starting graph execution for run %s", run_id)
         await app.ainvoke(initial_state)
         logger.info("Finished graph execution for run %s", run_id)
+    except Exception as exc:
+        logger.exception("Graph execution failed catastrophically for run %s", run_id)
+        latest_holder = _latest_state_holder.get() or {}
+        await reliability.persist_catastrophic_failure(
+            db,
+            run_id=run_id,
+            state=latest_holder.get("state") or initial_state,
+            exc=exc,
+        )
+        raise
     finally:
         await executor.reset_browser_clients()
+        _latest_state_holder.reset(latest_state_token)
         _db_session.reset(token)

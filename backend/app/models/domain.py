@@ -11,9 +11,11 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -72,6 +74,9 @@ class BenchmarkSuite(Base):
 
 class BenchmarkCase(Base):
     __tablename__ = "benchmark_cases"
+    __table_args__ = (
+        Index("ix_benchmark_cases_suite_id", "suite_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
     suite_id: Mapped[UUID] = mapped_column(
@@ -98,6 +103,12 @@ class Run(Base):
             name="ck_runs_status",
         ),
         CheckConstraint("kind IN ('standard', 'benchmark')", name="ck_runs_kind"),
+        Index("ix_runs_status_created_at", "status", "created_at"),
+        Index("ix_runs_kind_created_at", "kind", "created_at"),
+        Index("ix_runs_executor_config_id", "executor_config_id"),
+        Index("ix_runs_judge_config_id", "judge_config_id"),
+        Index("ix_runs_benchmark_suite_id", "benchmark_suite_id"),
+        Index("ix_runs_benchmark_case_id", "benchmark_case_id"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -106,6 +117,7 @@ class Run(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     kind: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
     latest_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    failure_record: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
     executor_config_id: Mapped[UUID | None] = mapped_column(
         uuid_type,
         ForeignKey("model_prompt_configs.id"),
@@ -142,27 +154,33 @@ class Run(Base):
         back_populates="run",
         cascade="all, delete-orphan",
         order_by="Task.index",
+        passive_deletes=True,
     )
     ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     telemetry: Mapped["RunTelemetry | None"] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
         uselist=False,
+        passive_deletes=True,
     )
     task_attempts: Mapped[list["TaskAttempt"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     escalations: Mapped[list["Escalation"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     executor_config: Mapped["ModelPromptConfig | None"] = relationship(
         back_populates="executor_runs",
@@ -183,6 +201,9 @@ class Task(Base):
             "status IN ('pending', 'executing', 'claimed', 'verified', 'failed', 'escalated')",
             name="ck_tasks_status",
         ),
+        UniqueConstraint("run_id", "index", name="uq_tasks_run_id_index"),
+        Index("ix_tasks_run_id_status", "run_id", "status"),
+        Index("ix_tasks_run_id_index", "run_id", "index"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -209,19 +230,23 @@ class Task(Base):
     ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     task_attempts: Mapped[list["TaskAttempt"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
         order_by="TaskAttempt.attempt_index",
+        passive_deletes=True,
     )
     escalations: Mapped[list["Escalation"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -233,6 +258,9 @@ class TaskAttempt(Base):
             "verification_method IS NULL OR verification_method IN ('deterministic', 'llm_judge', 'hybrid')",
             name="ck_task_attempts_verification_method",
         ),
+        UniqueConstraint("task_id", "attempt_index", name="uq_task_attempts_task_id_attempt_index"),
+        Index("ix_task_attempts_run_id_created_at", "run_id", "created_at"),
+        Index("ix_task_attempts_task_id_created_at", "task_id", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -319,6 +347,9 @@ class Escalation(Base):
             "status IN ('pending_review', 'approved', 'rejected', 'sent_back')",
             name="ck_escalations_status",
         ),
+        Index("ix_escalations_status_created_at", "status", "created_at"),
+        Index("ix_escalations_run_id_status", "run_id", "status"),
+        Index("ix_escalations_task_id_status", "task_id", "status"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -343,6 +374,7 @@ class Escalation(Base):
     reviewer_decisions: Mapped[list["ReviewerDecision"]] = relationship(
         back_populates="escalation",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -353,6 +385,9 @@ class ReviewerDecision(Base):
             "decision IN ('approve', 'reject', 'send_back')",
             name="ck_reviewer_decisions_decision",
         ),
+        Index("ix_reviewer_decisions_escalation_id_created_at", "escalation_id", "created_at"),
+        Index("ix_reviewer_decisions_run_id_created_at", "run_id", "created_at"),
+        Index("ix_reviewer_decisions_task_id_created_at", "task_id", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -371,6 +406,8 @@ class ReviewerDecision(Base):
         ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=False,
     )
+    reviewer_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reviewer_display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     reviewer_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     decision: Mapped[str] = mapped_column(String(32), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -392,6 +429,9 @@ class LedgerEntry(Base):
             "confidence >= 0.0 AND confidence <= 1.0",
             name="ck_ledger_entries_confidence",
         ),
+        Index("ix_ledger_entries_run_id_created_at", "run_id", "created_at"),
+        Index("ix_ledger_entries_task_id_created_at", "task_id", "created_at"),
+        Index("ix_ledger_entries_attempt_id", "attempt_id"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
@@ -402,7 +442,7 @@ class LedgerEntry(Base):
     )
     run_id: Mapped[UUID] = mapped_column(
         uuid_type,
-        ForeignKey("runs.id"),
+        ForeignKey("runs.id", ondelete="CASCADE"),
         nullable=False,
     )
     attempt_id: Mapped[UUID | None] = mapped_column(

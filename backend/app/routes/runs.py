@@ -17,61 +17,31 @@ from app.models.domain import (
     BenchmarkCase,
     BenchmarkSuite,
     Escalation,
+    LedgerEntry,
     ModelPromptConfig,
-    ReviewerDecision,
-    Run,
     RunTelemetry,
     Task,
-    TaskAttempt,
-    utcnow,
+    Run,
 )
 from app.orchestrator.graph import run_graph
+from app.routes._contracts import (
+    build_task_evidence,
+    build_run_inspection,
+    raise_api_error,
+    to_run_schema,
+    to_run_summary,
+)
 from app.schemas.run import (
     CreateRunRequest,
     ReliabilityOverviewSchema,
+    RunInspectionSchema,
     RunSchema,
     RunSummarySchema,
-    TaskSchema,
+    TaskEvidenceSchema,
 )
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 logger = logging.getLogger(__name__)
-
-
-def _to_run_summary(run: Run) -> RunSummarySchema:
-    return RunSummarySchema(
-        id=run.id,
-        goal=run.goal,
-        status=run.status,
-        kind=run.kind,
-        latest_confidence=run.latest_confidence,
-        created_at=run.created_at,
-        task_count=len(run.tasks),
-    )
-
-
-def _to_run_schema(run: Run) -> RunSchema:
-    run.tasks.sort(key=lambda task: task.index)
-    run.task_attempts.sort(key=lambda attempt: (attempt.task_id, attempt.attempt_index, attempt.created_at))
-    return RunSchema(
-        id=run.id,
-        goal=run.goal,
-        acceptance_criteria=run.acceptance_criteria,
-        status=run.status,
-        kind=run.kind,
-        latest_confidence=run.latest_confidence,
-        created_at=run.created_at,
-        updated_at=run.updated_at,
-        tasks=[TaskSchema.model_validate(task) for task in run.tasks],
-        telemetry=run.telemetry,
-        task_attempts=run.task_attempts,
-        escalations=run.escalations,
-        reviewer_decisions=run.reviewer_decisions,
-        executor_config=run.executor_config,
-        judge_config=run.judge_config,
-        benchmark_suite=run.benchmark_suite,
-        benchmark_case=run.benchmark_case,
-    )
 
 
 def _asyncpg_dsn() -> str | None:
@@ -92,6 +62,7 @@ async def _load_run_or_404(db: AsyncSession, run_id: UUID) -> Run:
             selectinload(Run.tasks),
             selectinload(Run.telemetry),
             selectinload(Run.task_attempts),
+            selectinload(Run.ledger_entries).selectinload(LedgerEntry.task),
             selectinload(Run.escalations).selectinload(Escalation.reviewer_decisions),
             selectinload(Run.reviewer_decisions),
             selectinload(Run.executor_config),
@@ -103,7 +74,7 @@ async def _load_run_or_404(db: AsyncSession, run_id: UUID) -> Run:
     )
     run = result.scalar_one_or_none()
     if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+        raise_api_error(status.HTTP_404_NOT_FOUND, "run_not_found", "Run not found", details={"run_id": str(run_id)})
     return run
 
 
@@ -113,12 +84,6 @@ async def _run_graph_in_background(run_id: str) -> None:
             await run_graph(run_id, db)
         except Exception:
             logger.exception("Background graph execution failed for run %s", run_id)
-            result = await db.execute(select(Run).where(Run.id == UUID(run_id)))
-            run = result.scalar_one_or_none()
-            if run is not None:
-                run.status = "failed"
-                run.updated_at = utcnow()
-                await db.commit()
 
 
 @router.post("", response_model=RunSummarySchema, status_code=status.HTTP_201_CREATED)
@@ -136,7 +101,12 @@ async def create_run(
         )
         benchmark_case = benchmark_case_result.scalar_one_or_none()
         if benchmark_case is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Benchmark case not found")
+            raise_api_error(
+                status.HTTP_404_NOT_FOUND,
+                "benchmark_case_not_found",
+                "Benchmark case not found",
+                details={"benchmark_case_id": str(payload.benchmark_case_id)},
+            )
         benchmark_suite_id = benchmark_case.suite_id
 
     run = Run(
@@ -207,13 +177,33 @@ async def list_runs(db: AsyncSession = Depends(get_db)) -> list[RunSummarySchema
         .order_by(Run.created_at.desc())
     )
     runs = result.scalars().unique().all()
-    return [_to_run_summary(run) for run in runs]
+    return [to_run_summary(run) for run in runs]
 
 
 @router.get("/{run_id}", response_model=RunSchema)
 async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunSchema:
     run = await _load_run_or_404(db, run_id)
-    return _to_run_schema(run)
+    return to_run_schema(run)
+
+
+@router.get("/{run_id}/inspection", response_model=RunInspectionSchema)
+async def inspect_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunInspectionSchema:
+    run = await _load_run_or_404(db, run_id)
+    return build_run_inspection(run)
+
+
+@router.get("/{run_id}/tasks/{task_id}/evidence", response_model=TaskEvidenceSchema)
+async def get_task_evidence(run_id: UUID, task_id: UUID, db: AsyncSession = Depends(get_db)) -> TaskEvidenceSchema:
+    run = await _load_run_or_404(db, run_id)
+    task = next((item for item in run.tasks if item.id == task_id), None)
+    if task is None:
+        raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            "task_not_found",
+            "Task not found",
+            details={"run_id": str(run_id), "task_id": str(task_id)},
+        )
+    return build_task_evidence(run, task)
 
 
 @router.delete("/{run_id}/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,7 +211,12 @@ async def delete_task(run_id: UUID, task_id: UUID, db: AsyncSession = Depends(ge
     run = await _load_run_or_404(db, run_id)
     task = next((task for task in run.tasks if task.id == task_id), None)
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            "task_not_found",
+            "Task not found",
+            details={"run_id": str(run_id), "task_id": str(task_id)},
+        )
     await db.delete(task)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

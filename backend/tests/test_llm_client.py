@@ -127,3 +127,68 @@ async def test_chat_retries_twice_before_success(monkeypatch: pytest.MonkeyPatch
     assert create_mock.await_count == 3
     assert sleep_mock.await_args_list[0].args == (1,)
     assert sleep_mock.await_args_list[1].args == (2,)
+
+
+@pytest.mark.asyncio
+async def test_chat_retries_rate_limit_errors(monkeypatch: pytest.MonkeyPatch):
+    llm_module = load_llm_module(monkeypatch)
+
+    create_mock = AsyncMock(
+        side_effect=[
+            RuntimeError("429 Too Many Requests"),
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="success after retry"))]
+            ),
+        ]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+    )
+    async_openai_mock = Mock(return_value=fake_client)
+    monkeypatch.setattr(llm_module, "AsyncOpenAI", async_openai_mock)
+
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr(llm_module.asyncio, "sleep", sleep_mock)
+
+    client = llm_module.LLMClient(
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        model="executor-model",
+    )
+
+    result = await client.chat(messages=[{"role": "user", "content": "hello"}])
+
+    assert result == "success after retry"
+    assert create_mock.await_count == 2
+    assert sleep_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_chat_json_raises_classified_error_for_malformed_output(monkeypatch: pytest.MonkeyPatch):
+    llm_module = load_llm_module(monkeypatch)
+
+    create_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="not valid json at all"))]
+        )
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+    )
+    async_openai_mock = Mock(return_value=fake_client)
+    monkeypatch.setattr(llm_module, "AsyncOpenAI", async_openai_mock)
+
+    client = llm_module.LLMClient(
+        base_url="https://openrouter.ai/api/v1",
+        api_key="test-key",
+        model="executor-model",
+    )
+
+    with pytest.raises(llm_module.LLMClientError) as exc_info:
+        await client.chat_json(
+            messages=[{"role": "user", "content": "verify this"}],
+            schema_hint="{verified: boolean}",
+        )
+
+    assert exc_info.value.category == "malformed_response"
+    assert exc_info.value.retryable is False

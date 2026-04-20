@@ -266,3 +266,103 @@ async def test_browser_click_records_expected_text_match_without_fallback(monkey
     structured = result["structured_content"]
     assert structured["success"] is True
     assert structured["matched_text"] is True
+
+
+@pytest.mark.asyncio
+async def test_judge_returns_structured_failure_when_llm_output_is_malformed(monkeypatch: pytest.MonkeyPatch):
+    session, engine = await _make_session()
+    try:
+        _, task = await _seed_run_and_task(
+            session,
+            "Verify a browser action",
+            "The page should contain expected text",
+            "browser.click",
+        )
+        monkeypatch.setattr(
+            llm_module.judge_llm,
+            "chat_json",
+            AsyncMock(side_effect=llm_module.LLMClientError(
+                "LLM response was not valid JSON: <bad output>",
+                category="malformed_response",
+                retryable=False,
+                provider="https://openrouter.ai/api/v1",
+                model="judge-model",
+                raw_output="<bad output>",
+            )),
+        )
+
+        state = _state_for_task(
+            task,
+            action_claim={"tool_name": "browser.click", "result": None, "claimed_success": False},
+            verification_result={"verified": False, "confidence": 0.0, "method": "deterministic", "evidence": "No verifier"},
+        )
+        updated = await judge_module.evaluate(state, session)
+
+        result = updated["verification_result"]
+        assert result["verified"] is False
+        assert result["method"] == "llm_judge"
+        assert result["error_details"]["category"] == "malformed_response"
+        assert result["error_details"]["retryable"] is False
+        assert "Judge failed to produce usable verification output" in result["evidence"]
+    finally:
+        await session.close()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_judge_prompt_includes_targeted_deterministic_failure_evidence(monkeypatch: pytest.MonkeyPatch):
+    session, engine = await _make_session()
+    try:
+        _, task = await _seed_run_and_task(
+            session,
+            "Click the English language link",
+            "The page should contain The Free Encyclopedia",
+            "browser.click",
+        )
+
+        captured_messages = {}
+
+        async def fake_chat_json(*, messages, schema_hint, temperature=0.1):
+            captured_messages["messages"] = messages
+            return {
+                "verified": False,
+                "confidence": 0.3,
+                "evidence": "The expected encyclopedia heading never appeared.",
+                "failure_indicators": ["Expected text was not present after the click."],
+                "reasoning": "The click may have happened, but the destination evidence is still missing.",
+            }
+
+        monkeypatch.setattr(llm_module.judge_llm, "chat_json", fake_chat_json)
+
+        state = _state_for_task(
+            task,
+            action_claim={
+                "tool_name": "browser.click",
+                "claimed_success": True,
+                "params": {"selector": "link=English", "expected_text": "The Free Encyclopedia"},
+            },
+            verification_result={
+                "verified": False,
+                "confidence": 0.0,
+                "method": "deterministic",
+                "outcome": "evidence_missing",
+                "evidence": "browser.click completed an action, but the expected evidence was not found.",
+                "summary": "The browser action likely progressed, but the current page evidence does not prove the expected outcome.",
+                "expected_evidence": ["The Free Encyclopedia"],
+                "observed_evidence": ["Page title: Wikipedia", "Selector used: link=English"],
+                "missing_evidence": ["The Free Encyclopedia"],
+                "failure_indicators": ["Expected evidence 'The Free Encyclopedia' was not found in the browser output."],
+                "ambiguity_reason": "The browser output after the action was too sparse to prove the expected outcome.",
+            },
+            retry_count=0,
+        )
+        await judge_module.evaluate(state, session)
+
+        user_message = captured_messages["messages"][1]["content"]
+        assert "Expected evidence:" in user_message
+        assert "Missing evidence:" in user_message
+        assert "Ambiguity reason:" in user_message
+        assert "The Free Encyclopedia" in user_message
+    finally:
+        await session.close()
+        await engine.dispose()

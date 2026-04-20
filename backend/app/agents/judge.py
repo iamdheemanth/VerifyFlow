@@ -1,20 +1,63 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import LedgerEntry, Task
+from app.core.llm import LLMClientError
+from app.models.domain import Task
 from app.orchestrator.states import VerifyFlowState
 from app.schemas.verification import VerificationResult
+from app.services import reliability
 
 
 async def _load_task(db: AsyncSession, task_id: str) -> Task:
     result = await db.execute(select(Task).where(Task.id == UUID(task_id)))
     return result.scalar_one()
+
+
+def _format_verification_context(verification_result: dict[str, Any] | None) -> str:
+    if not isinstance(verification_result, dict):
+        return "No deterministic verification result was available."
+
+    lines = [
+        f"Outcome: {verification_result.get('outcome')}",
+        f"Verified: {verification_result.get('verified')}",
+        f"Confidence: {verification_result.get('confidence')}",
+        f"Evidence summary: {verification_result.get('evidence')}",
+    ]
+
+    summary = verification_result.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        lines.append(f"Summary: {summary.strip()}")
+
+    for label, key in (
+        ("Expected evidence", "expected_evidence"),
+        ("Observed evidence", "observed_evidence"),
+        ("Missing evidence", "missing_evidence"),
+        ("Failure indicators", "failure_indicators"),
+    ):
+        values = verification_result.get(key)
+        if isinstance(values, list) and values:
+            lines.append(f"{label}:")
+            lines.extend(f"- {value}" for value in values if isinstance(value, str) and value.strip())
+
+    ambiguity_reason = verification_result.get("ambiguity_reason")
+    if isinstance(ambiguity_reason, str) and ambiguity_reason.strip():
+        lines.append(f"Ambiguity reason: {ambiguity_reason.strip()}")
+
+    error_details = verification_result.get("error_details")
+    if isinstance(error_details, dict):
+        message = error_details.get("message")
+        category = error_details.get("category")
+        if isinstance(message, str) and message.strip():
+            lines.append(f"Verifier error: {message.strip()}")
+        if isinstance(category, str) and category.strip():
+            lines.append(f"Verifier error category: {category.strip()}")
+
+    return "\n".join(lines)
 
 
 async def evaluate(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
@@ -59,47 +102,73 @@ async def evaluate(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
                 f"SUCCESS CRITERIA: {current_task['success_criteria']}\n"
                 "     \n"
                 "WHAT THE AGENT CLAIMED IT DID:\n"
-                f"{json.dumps(state['action_claim'], indent=2)}\n"
+                f"{state['action_claim']}\n"
                 "     \n"
                 "DETERMINISTIC CHECK RESULT:\n"
-                f"{json.dumps(state['verification_result'], indent=2)}\n"
+                f"{_format_verification_context(state['verification_result'])}\n"
                 "     \n"
-                "Now find evidence this task was NOT done correctly."
+                "Your goal is to find evidence this task was NOT done correctly. "
+                "Pay special attention to missing evidence, contradictions between the claim and the page/system state, "
+                "and any ambiguity called out by the deterministic verifier."
             ),
         },
     ]
 
-    raw_response = await judge_llm.chat(
-        messages=messages,
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-    response = json.loads(judge_llm._strip_markdown_fences(raw_response))
+    try:
+        response = await judge_llm.chat_json(
+            messages=messages,
+            schema_hint=(
+                '{"verified": true, "confidence": 0.0, "evidence": "string", '
+                '"failure_indicators": ["string"], "reasoning": "string"}'
+            ),
+            temperature=0.1,
+        )
+        judge_result = VerificationResult(
+            verified=bool(response["verified"]),
+            confidence=float(response["confidence"]),
+            method="llm_judge",
+            evidence=str(response["evidence"]),
+            judge_reasoning=str(response["reasoning"]),
+            outcome="verified" if bool(response["verified"]) else "inconclusive",
+            summary=str(response["evidence"]),
+        )
 
-    judge_result = VerificationResult(
-        verified=bool(response["verified"]),
-        confidence=float(response["confidence"]),
-        method="llm_judge",
-        evidence=str(response["evidence"]),
-        judge_reasoning=str(response["reasoning"]),
-    )
-
-    verification_payload: dict[str, Any] = judge_result.model_dump()
-    verification_payload["failure_indicators"] = response.get("failure_indicators", [])
+        verification_payload: dict[str, Any] = judge_result.model_dump()
+        verification_payload["failure_indicators"] = response.get("failure_indicators", [])
+    except Exception as exc:
+        if isinstance(exc, LLMClientError):
+            error_details = exc.to_error_details(source="judge")
+        else:
+            error_details = reliability.build_error_details(
+                str(exc),
+                source="judge",
+                category="verification_error",
+                retryable=False,
+            )
+        verification_payload = {
+            "verified": False,
+            "confidence": 0.0,
+            "method": "llm_judge",
+            "evidence": "Judge failed to produce usable verification output.",
+            "judge_reasoning": error_details["message"],
+            "failure_indicators": [error_details["message"]],
+            "error_details": error_details,
+        }
 
     task = await _load_task(db, current_task["id"])
-    ledger_entry = LedgerEntry(
-        task_id=task.id,
-        run_id=task.run_id,
-        attempt_id=UUID(state["current_attempt_id"]) if state.get("current_attempt_id") else None,
-        verification_method="llm_judge",
-        confidence=judge_result.confidence,
-        verified=judge_result.verified,
-        evidence=judge_result.evidence,
-        judge_reasoning=judge_result.judge_reasoning,
+    await reliability.create_ledger_entry(
+        db,
+        run_id=str(task.run_id),
+        task_id=str(task.id),
+        result={
+            "method": "llm_judge",
+            "confidence": verification_payload["confidence"],
+            "verified": verification_payload["verified"],
+            "evidence": verification_payload["evidence"],
+            "judge_reasoning": verification_payload.get("judge_reasoning"),
+        },
+        attempt_id=state.get("current_attempt_id"),
     )
-    db.add(ledger_entry)
-    await db.commit()
 
     updated_task = {
         **current_task,

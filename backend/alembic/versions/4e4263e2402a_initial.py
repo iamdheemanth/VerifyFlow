@@ -19,6 +19,17 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _utc_now_default():
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return sa.text("CURRENT_TIMESTAMP")
+    return sa.text("TIMEZONE('utc', now())")
+
+
+def _json_type():
+    return sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql")
+
+
 def upgrade() -> None:
     op.create_table(
         "runs",
@@ -30,13 +41,13 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint(
             "status IN ('pending', 'planning', 'executing', 'completed', 'failed')",
@@ -52,15 +63,15 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("success_criteria", sa.Text(), nullable=False),
         sa.Column("tool_name", sa.String(length=128), nullable=False),
-        sa.Column("tool_params", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("tool_params", _json_type(), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="pending"),
-        sa.Column("claimed_result", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("claimed_result", _json_type(), nullable=True),
         sa.Column("retry_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint(
             "status IN ('pending', 'executing', 'claimed', 'verified', 'failed', 'escalated')",
@@ -83,7 +94,7 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("TIMEZONE('utc', now())"),
+            server_default=_utc_now_default(),
         ),
         sa.CheckConstraint(
             "confidence >= 0.0 AND confidence <= 1.0",
