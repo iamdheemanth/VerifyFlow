@@ -3,18 +3,45 @@
 @tailwind utilities;
 
 :root {
-  --background: #f5efe5;
-  --foreground: #0f172a;
+  --bg-base: #F7F3EE;
+  --bg-raised: #FFFFFF;
+  --bg-sunken: #EEE9E1;
+  --border-subtle: #E2DAD0;
+  --border-strong: #C8BEB2;
+  --ink-primary: #1A1410;
+  --ink-secondary: #5C5248;
+  --ink-tertiary: #9C948A;
+  --accent-amber: #B45309;
+  --accent-green: #166534;
+  --accent-red: #991B1B;
+  --accent-blue: #1D4ED8;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  background-color: var(--bg-base);
+  color: var(--ink-primary);
   min-height: 100vh;
+  font-family: var(--font-geist-sans), sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: fadeIn 200ms ease-out both;
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #EEE9E1 25%, #E2DAD0 50%, #EEE9E1 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
 }
