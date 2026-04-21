@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.auth import verify_token
 from app.routes._contracts import build_api_error, error_code_for_status
 from app.routes.benchmarks import router as benchmarks_router
 from app.routes.configurations import router as configurations_router
@@ -27,7 +28,10 @@ def configure_logging() -> None:
 
 configure_logging()
 
-app = FastAPI(title="VerifyFlow API")
+app = FastAPI(
+    title="VerifyFlow API",
+    dependencies=[Depends(verify_token)],
+)
 
 app.add_middleware(
     CORSMiddleware,
