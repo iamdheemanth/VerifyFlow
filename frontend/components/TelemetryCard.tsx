@@ -114,17 +114,17 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
   return (
     <section className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold text-[#1A1410]">Telemetry</h2>
-      <p className="mt-1 font-mono text-[10px] text-[#9C948A]">
+      <p className="mt-1 break-all font-mono text-[10px] text-[#9C948A]">
         {telemetry.updated_at}
       </p>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl bg-[#F7F3EE] p-3">
+          <div key={stat.label} className="min-w-0 rounded-xl bg-[#F7F3EE] p-3">
             <span className="block text-[9px] uppercase tracking-widest text-[#9C948A]">
               {stat.label}
             </span>
-            <span className={stat.valueClassName}>{stat.value}</span>
+            <span className={`${stat.valueClassName} break-words`}>{stat.value}</span>
             {typeof stat.barValue === "number" ? (
               <div className="mt-2 h-1 w-12 rounded-full bg-[#E2DAD0]">
                 <div
@@ -179,7 +179,7 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-[#9C948A]">
+        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-[#9C948A]">
           <div className="inline-flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-[#9C948A]" />
             <span>Deterministic {telemetry.deterministic_verifications}</span>

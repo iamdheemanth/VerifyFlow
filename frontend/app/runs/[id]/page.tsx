@@ -1,6 +1,11 @@
 import Link from "next/link";
 
+import AttemptsSection from "@/components/AttemptsSection";
+import EscalationsCard from "@/components/EscalationsCard";
+import LedgerSection from "@/components/LedgerSection";
 import StatusBadge from "@/components/StatusBadge";
+import TasksSection from "@/components/TasksSection";
+import TelemetryCard from "@/components/TelemetryCard";
 import { api } from "@/lib/api";
 import type { Run } from "@/types/run";
 
@@ -8,31 +13,6 @@ export const dynamic = "force-dynamic";
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
-}
-
-function SkeletonCard({
-  title,
-  lines = 3,
-}: {
-  title: string;
-  lines?: number;
-}) {
-  return (
-    <div className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-[#1A1410]">{title}</h2>
-        <div className="skeleton h-4 w-16" />
-      </div>
-      <div className="mt-4 space-y-3">
-        {Array.from({ length: lines }).map((_, index) => (
-          <div
-            key={`${title}-${index}`}
-            className={`skeleton h-4 ${index === lines - 1 ? "w-2/3" : "w-full"}`}
-          />
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function ErrorState() {
@@ -72,6 +52,73 @@ function ErrorState() {
   );
 }
 
+function ConfigCard({ run }: { run: Run }) {
+  const executorLabel = run.executor_config
+    ? `${run.executor_config.name} · ${run.executor_config.model_name}`
+    : "Default executor configuration";
+  const judgeLabel = run.judge_config
+    ? `${run.judge_config.name} · ${run.judge_config.model_name}`
+    : "Default judge configuration";
+  const benchmarkLabel = run.benchmark_case
+    ? `${run.benchmark_suite?.name ?? "Benchmark suite"} · ${run.benchmark_case.name}`
+    : "Standard run";
+
+  return (
+    <section className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-[#1A1410]">Configuration</h2>
+      <div className="mt-4 space-y-3">
+        <div className="rounded-xl bg-[#F7F3EE] p-3">
+          <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+            Executor
+          </p>
+          <p className="mt-1 break-words text-sm text-[#1A1410]">{executorLabel}</p>
+        </div>
+        <div className="rounded-xl bg-[#F7F3EE] p-3">
+          <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+            Judge
+          </p>
+          <p className="mt-1 break-words text-sm text-[#1A1410]">{judgeLabel}</p>
+        </div>
+        <div className="rounded-xl bg-[#F7F3EE] p-3">
+          <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+            Run Type
+          </p>
+          <p className="mt-1 break-words text-sm text-[#1A1410]">{benchmarkLabel}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FailureRecordCard({ failureRecord }: { failureRecord: Record<string, unknown> }) {
+  const message =
+    typeof failureRecord.message === "string"
+      ? failureRecord.message
+      : "A run-level orchestration failure was recorded.";
+  const category =
+    typeof failureRecord.category === "string" ? failureRecord.category : null;
+  const stage = typeof failureRecord.stage === "string" ? failureRecord.stage : null;
+
+  return (
+    <section className="rounded-2xl border border-[#FCA5A5] bg-[#FEF2F2] p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-[#7F1D1D]">Failure Record</h2>
+      <p className="mt-2 text-sm text-[#991B1B]">{message}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {category ? (
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-medium text-[#991B1B]">
+            {category}
+          </span>
+        ) : null}
+        {stage ? (
+          <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-medium text-[#991B1B]">
+            Stage: {stage}
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export default async function RunDetailPage({
   params,
 }: {
@@ -87,7 +134,7 @@ export default async function RunDetailPage({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 md:px-10 space-y-6 page-enter">
+    <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-6 sm:px-6 md:py-8 xl:px-8 page-enter">
       <section className="bg-white border border-[#E2DAD0] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
@@ -99,12 +146,12 @@ export default async function RunDetailPage({
                 Runs
               </Link>
               <span className="text-[#C8BEB2] mx-1">/</span>
-              <span className="text-[#5C5248] text-sm truncate max-w-md">
+              <span className="max-w-full truncate text-sm text-[#5C5248] lg:max-w-md">
                 {run.goal}
               </span>
             </div>
 
-            <h1 className="text-2xl font-semibold text-[#1A1410] mt-2 leading-tight">
+            <h1 className="mt-2 break-words text-2xl font-semibold leading-tight text-[#1A1410] xl:text-[2rem]">
               {run.goal}
             </h1>
 
@@ -119,7 +166,7 @@ export default async function RunDetailPage({
               >
                 {run.kind === "benchmark" ? "Benchmark" : "Standard"}
               </span>
-              <span className="font-[family-name:var(--font-geist-mono)] text-[10px] text-[#9C948A] bg-[#EEE9E1] px-2 py-1 rounded-lg">
+              <span className="max-w-full break-all font-[family-name:var(--font-geist-mono)] text-[10px] text-[#9C948A] bg-[#EEE9E1] px-2 py-1 rounded-lg">
                 {run.id}
               </span>
             </div>
@@ -136,24 +183,25 @@ export default async function RunDetailPage({
             <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
               Acceptance Criteria
             </p>
-            <p className="text-sm text-[#5C5248] italic mt-1">
+            <p className="mt-1 break-words text-sm italic text-[#5C5248]">
               {run.acceptance_criteria}
             </p>
           </div>
         ) : null}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <div className="space-y-6">
-          <SkeletonCard title="Tasks Section" lines={4} />
-          <SkeletonCard title="Attempts Section" lines={5} />
-          <SkeletonCard title="Ledger Section" lines={4} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,0.95fr)]">
+        <div className="min-w-0 space-y-6">
+          <TasksSection run={run} />
+          <AttemptsSection attempts={run.task_attempts} />
+          <LedgerSection runId={run.id} />
         </div>
 
-        <div className="space-y-6">
-          <SkeletonCard title="Telemetry Card" lines={3} />
-          <SkeletonCard title="Escalations Card" lines={4} />
-          <SkeletonCard title="Config Card" lines={3} />
+        <div className="min-w-0 space-y-6">
+          <TelemetryCard telemetry={run.telemetry} />
+          <EscalationsCard escalations={run.escalations} />
+          <ConfigCard run={run} />
+          {run.failure_record ? <FailureRecordCard failureRecord={run.failure_record} /> : null}
         </div>
       </div>
     </div>

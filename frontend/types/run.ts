@@ -101,9 +101,15 @@ export interface ReviewerDecision {
   escalation_id: string;
   run_id: string;
   task_id: string;
+  reviewer_key: string | null;
+  reviewer_display_name: string | null;
   reviewer_name: string | null;
   decision: "approve" | "reject" | "send_back";
   notes: string | null;
+  escalation_status: string;
+  task_status: string;
+  run_status: string;
+  reprocess_requested: boolean;
   created_at: string;
 }
 
@@ -126,6 +132,7 @@ export interface Run {
   status: string;
   kind: "standard" | "benchmark";
   latest_confidence: number | null;
+  failure_record: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
   tasks: Task[];
@@ -147,6 +154,33 @@ export interface RunSummary {
   latest_confidence: number | null;
   created_at: string;
   task_count: number;
+}
+
+export interface ClaimedVsVerifiedSummary {
+  total_tasks: number;
+  pending_tasks: number;
+  executing_tasks: number;
+  claimed_tasks: number;
+  verified_tasks: number;
+  failed_tasks: number;
+  escalated_tasks: number;
+}
+
+export interface TaskEvidence {
+  task: Task;
+  latest_claim: Record<string, unknown> | null;
+  latest_verification: Record<string, unknown> | null;
+  attempts: TaskAttempt[];
+  ledger_entries: LedgerEntry[];
+  escalations: Escalation[];
+}
+
+export interface TaskInspection extends TaskEvidence {}
+
+export interface RunInspection {
+  run: Run;
+  claimed_vs_verified: ClaimedVsVerifiedSummary;
+  task_inspections: TaskInspection[];
 }
 
 export interface LedgerEntry {

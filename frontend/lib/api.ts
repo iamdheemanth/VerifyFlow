@@ -10,6 +10,7 @@ import type {
   ReliabilityOverview,
   ReviewerDecision,
   Run,
+  RunInspection,
   RunStreamEvent,
   RunSummary,
 } from "@/types/run";
@@ -65,6 +66,10 @@ export const api = {
     return request<Run>(`/runs/${id}`);
   },
 
+  async getRunInspection(id: string): Promise<RunInspection> {
+    return request<RunInspection>(`/runs/${id}/inspection`);
+  },
+
   async getLedger(run_id: string): Promise<LedgerEntry[]> {
     return request<LedgerEntry[]>(`/ledger/${run_id}`);
   },
@@ -77,11 +82,12 @@ export const api = {
     escalationId: string,
     decision: "approve" | "reject" | "send_back",
     notes: string | null,
-    reviewer_name: string | null
+    reviewer_key: string,
+    reviewer_display_name?: string | null
   ): Promise<ReviewerDecision> {
     return request<ReviewerDecision>(`/review/escalations/${escalationId}/decision`, {
       method: "POST",
-      body: JSON.stringify({ decision, notes, reviewer_name }),
+      body: JSON.stringify({ decision, notes, reviewer_key, reviewer_display_name }),
     });
   },
 

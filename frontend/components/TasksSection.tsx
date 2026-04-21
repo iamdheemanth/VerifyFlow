@@ -113,7 +113,10 @@ export default function TasksSection({ run }: TasksSectionProps) {
           const isExpanded = expandedTaskIds.has(task.id);
 
           return (
-            <div key={task.id} className="flex items-start gap-4 py-4 px-6">
+            <div
+              key={task.id}
+              className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-start sm:gap-4"
+            >
               <div
                 className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${taskBorderClass(
                   effectiveStatus
@@ -124,14 +127,14 @@ export default function TasksSection({ run }: TasksSectionProps) {
                 </span>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-[#1A1410]">
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-sm font-medium text-[#1A1410]">
                   {task.description}
                 </p>
-                <p className="text-xs text-[#9C948A] mt-0.5 leading-5">
+                <p className="mt-0.5 break-words text-xs leading-5 text-[#9C948A]">
                   {task.success_criteria}
                 </p>
-                <span className="inline-flex items-center bg-[#EEE9E1] text-[#5C5248] text-[10px] font-mono px-2 py-0.5 rounded mt-1.5">
+                <span className="mt-1.5 inline-flex max-w-full items-center break-all rounded bg-[#EEE9E1] px-2 py-0.5 font-mono text-[10px] text-[#5C5248]">
                   {task.tool_name}
                 </span>
 
@@ -153,7 +156,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
                 ) : null}
               </div>
 
-              <div className="flex-shrink-0">
+              <div className="self-start sm:flex-shrink-0">
                 <StatusBadge status={effectiveStatus} />
                 {task.retry_count > 0 ? (
                   <span className="text-[10px] text-[#B45309] font-mono mt-1 block">

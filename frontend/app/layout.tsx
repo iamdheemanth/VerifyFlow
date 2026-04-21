@@ -51,7 +51,7 @@ const navItems = [
     ),
   },
   {
-    href: "/review-queue",
+    href: "/review",
     label: "Review Queue",
     icon: (
       <svg
@@ -83,7 +83,7 @@ const navItems = [
     ),
   },
   {
-    href: "/configurations",
+    href: "/configs",
     label: "Configurations",
     icon: (
       <svg

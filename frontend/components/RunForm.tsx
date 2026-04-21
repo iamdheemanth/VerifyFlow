@@ -50,13 +50,13 @@ export default function RunForm() {
 
       <label>
         <span className="block text-[10px] uppercase tracking-widest text-[#9C8C80] mb-1.5">
-          Acceptance Criteria
+          Acceptance Criteria (Optional)
         </span>
         <textarea
           value={acceptanceCriteria}
           onChange={(event) => setAcceptanceCriteria(event.target.value)}
           rows={2}
-          placeholder="How should success be judged?"
+          placeholder="How should success be judged, if you want to specify it?"
           className="w-full bg-[#2D2520] border border-[#3D3028] rounded-xl px-4 py-3 text-white text-sm placeholder-[#7A6E68] focus:outline-none focus:border-[#6B5B4E] resize-none"
         />
       </label>

@@ -113,7 +113,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <RecentRunsList initialRuns={runs} />
+          <RecentRunsList initialRuns={runs} limit={8} />
         </div>
       </section>
     </div>
