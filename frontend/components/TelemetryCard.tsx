@@ -4,6 +4,20 @@ type TelemetryCardProps = {
   telemetry: RunTelemetry | null;
 };
 
+type TelemetryStat =
+  | {
+      label: string;
+      value: string;
+      valueClassName: string;
+      barValue?: never;
+    }
+  | {
+      label: string;
+      value: string;
+      valueClassName: string;
+      barValue: number;
+    };
+
 function formatLatency(value: number) {
   if (value >= 1000) {
     return `${(value / 1000).toFixed(1)}s`;
@@ -51,7 +65,7 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
     telemetry.llm_judge_verifications +
     telemetry.hybrid_verifications;
 
-  const stats = [
+  const stats: TelemetryStat[] = [
     {
       label: "Executor Latency",
       value: formatLatency(telemetry.total_executor_latency_ms),
@@ -111,7 +125,7 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
               {stat.label}
             </span>
             <span className={stat.valueClassName}>{stat.value}</span>
-            {"barValue" in stat ? (
+            {typeof stat.barValue === "number" ? (
               <div className="mt-2 h-1 w-12 rounded-full bg-[#E2DAD0]">
                 <div
                   className={`h-1 rounded-full ${
