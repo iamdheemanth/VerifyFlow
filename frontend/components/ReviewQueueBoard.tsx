@@ -33,11 +33,14 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
     startTransition(async () => {
       setError(null);
       try {
+        const reviewerName = reviewerNames[escalationId]?.trim() ?? "";
+
         const reviewerDecision = await api.submitReviewerDecision(
           escalationId,
           decision,
           notes[escalationId] || null,
-          reviewerNames[escalationId] || null
+          reviewerName,
+          reviewerName || null
         );
         setEscalations((current) =>
           current.map((escalation) =>

@@ -1,6 +1,11 @@
 import { type NextAuthOptions } from 'next-auth'
+import { type JWT } from 'next-auth/jwt'
 import GoogleProvider from 'next-auth/providers/google'
 import { SignJWT, jwtVerify } from 'jose'
+
+type GoogleProfile = {
+  picture?: string | null
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -30,7 +35,7 @@ export const authOptions: NextAuthOptions = {
       const secretKey = new TextEncoder().encode(secret as string)
       try {
         const { payload } = await jwtVerify(token, secretKey)
-        return payload as any
+        return payload as JWT
       } catch {
         return null
       }
@@ -43,10 +48,12 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account && profile) {
-        token.id = profile.sub
-        token.email = profile.email
-        token.name = profile.name
-        token.picture = profile.picture ?? null
+        const googleProfile = profile as typeof profile & GoogleProfile
+
+        token.id = token.sub ?? account.providerAccountId
+        token.email = profile.email ?? token.email
+        token.name = profile.name ?? token.name
+        token.picture = googleProfile.picture ?? token.picture ?? null
       }
       return token
     },
