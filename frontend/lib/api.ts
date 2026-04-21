@@ -17,12 +17,44 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
+let _cachedToken: string | null = null;
+let _tokenFetchedAt: number = 0;
+const TOKEN_TTL_MS = 5 * 60 * 1000; // re-fetch every 5 minutes
+
+async function getApiToken(): Promise<string | null> {
+  const now = Date.now();
+  if (_cachedToken && now - _tokenFetchedAt < TOKEN_TTL_MS) {
+    return _cachedToken;
+  }
+  try {
+    const res = await fetch("/api/auth/token");
+    if (!res.ok) return null;
+    const data = await res.json();
+    _cachedToken = data.token ?? null;
+    _tokenFetchedAt = now;
+    return _cachedToken;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAuthHeaders(): Promise<HeadersInit> {
+  const token = await getApiToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method?.toUpperCase() ?? "GET";
   const headers = new Headers(init?.headers);
 
   if (method !== "GET" && method !== "HEAD" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+
+  const token = await getApiToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${BASE_URL}${path}`, {
