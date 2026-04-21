@@ -1,92 +1,98 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 
-import { api } from "@/lib/api";
+import ConfidenceBar from "@/components/ConfidenceBar";
+import StatusBadge from "@/components/StatusBadge";
+import { relativeTime } from "@/lib/utils";
 import type { RunSummary } from "@/types/run";
 
 type RecentRunsListProps = {
   initialRuns: RunSummary[];
 };
 
-function truncateGoal(goal: string) {
-  return goal.length > 60 ? `${goal.slice(0, 57)}...` : goal;
-}
-
-function statusClasses(status: string) {
-  if (status === "completed") return "bg-emerald-100 text-emerald-800";
-  if (status === "executing" || status === "planning") return "bg-amber-100 text-amber-800";
-  if (status === "failed" || status === "escalated") return "bg-rose-100 text-rose-800";
-  return "bg-slate-200 text-slate-700";
-}
-
 export default function RecentRunsList({ initialRuns }: RecentRunsListProps) {
-  const router = useRouter();
-  const [runs, setRuns] = useState(initialRuns);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const runs = initialRuns.slice(0, 8);
 
-  function handleDelete(runId: string) {
-    startTransition(async () => {
-      setError(null);
-      try {
-        await api.deleteRun(runId);
-        setRuns((current) => current.filter((run) => run.id !== runId));
-        router.refresh();
-      } catch (deleteError) {
-        setError(deleteError instanceof Error ? deleteError.message : "Failed to delete run.");
-      }
-    });
+  if (runs.length === 0) {
+    return (
+      <div className="mt-6 rounded-2xl border border-dashed border-[#E2DAD0] bg-[#F7F3EE] px-6 py-10 text-center text-sm text-[#9C948A]">
+        No runs yet.
+      </div>
+    );
   }
 
   return (
-    <div className="mt-6 grid gap-4">
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+    <div className="mt-6">
+      <div className="overflow-hidden rounded-2xl border border-[#E2DAD0] bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-[#F7F3EE]">
+            <tr className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+              <th className="px-4 py-3 text-left font-medium">Goal</th>
+              <th className="px-4 py-3 text-left font-medium">Kind</th>
+              <th className="px-4 py-3 text-left font-medium">Status</th>
+              <th className="px-4 py-3 text-left font-medium">Tasks</th>
+              <th className="px-4 py-3 text-left font-medium">Confidence</th>
+              <th className="px-4 py-3 text-left font-medium">Created</th>
+              <th className="px-4 py-3 text-left font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#E2DAD0]">
+            {runs.map((run) => (
+              <tr key={run.id}>
+                <td className="py-3.5 px-4">
+                  <div className="max-w-[280px]">
+                    <Link
+                      href={`/runs/${run.id}`}
+                      className="block truncate text-[#1A1410] font-medium hover:underline underline-offset-2"
+                    >
+                      {run.goal}
+                    </Link>
+                  </div>
+                </td>
+                <td className="py-3.5 px-4">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                      run.kind === "benchmark"
+                        ? "bg-[#DBEAFE] text-[#1E40AF]"
+                        : "bg-[#EEE9E1] text-[#5C5248]"
+                    }`}
+                  >
+                    {run.kind === "benchmark" ? "Benchmark" : "Standard"}
+                  </span>
+                </td>
+                <td className="py-3.5 px-4">
+                  <StatusBadge status={run.status} />
+                </td>
+                <td className="py-3.5 px-4 font-[family-name:var(--font-geist-mono)] text-[#5C5248]">
+                  {run.task_count}
+                </td>
+                <td className="py-3.5 px-4">
+                  <ConfidenceBar value={run.latest_confidence} width={56} />
+                </td>
+                <td className="py-3.5 px-4 text-[#5C5248]" title={run.created_at}>
+                  {relativeTime(run.created_at)}
+                </td>
+                <td className="py-3.5 px-4">
+                  <Link
+                    href={`/runs/${run.id}`}
+                    className="text-[#1D4ED8] hover:underline text-xs"
+                  >
+                    View →
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      {runs.map((run) => (
-        <div
-          key={run.id}
-          className="rounded-[1.5rem] border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-lg"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <Link href={`/runs/${run.id}`} className="group min-w-0 flex-1">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{run.id}</p>
-              <h3 className="mt-2 text-lg font-semibold text-slate-900 group-hover:text-slate-950">
-                {truncateGoal(run.goal)}
-              </h3>
-            </Link>
-            <div className="flex items-center gap-3">
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusClasses(run.status)}`}>
-                {run.status}
-              </span>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => handleDelete(run.id)}
-                className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-500">
-            <span>Created {new Date(run.created_at).toLocaleString()}</span>
-            <span className="capitalize">{run.kind}</span>
-            <span>{run.task_count} tasks</span>
-            <span>
-              Confidence {run.latest_confidence !== null ? `${Math.round(run.latest_confidence * 100)}%` : "—"}
-            </span>
-          </div>
-        </div>
-      ))}
-
-      {runs.length === 0 ? (
-        <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-slate-500">
-          No runs yet. Create the first one above.
-        </div>
-      ) : null}
+      <Link
+        href="/runs"
+        className="text-sm text-[#1D4ED8] hover:underline mt-4 block text-right"
+      >
+        View all runs →
+      </Link>
     </div>
   );
 }
