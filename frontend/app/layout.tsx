@@ -1,4 +1,5 @@
 import localFont from "next/font/local";
+import AuthProvider from "@/components/AuthProvider";
 import SidebarShell from "@/components/SidebarShell";
 import "./globals.css";
 
@@ -23,10 +24,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-[#F7F3EE] text-[#1A1410] font-sans antialiased`}
       >
-        <SidebarShell />
-        <main className="md:ml-56 min-h-screen">
-          <div className="page-enter">{children}</div>
-        </main>
+        <AuthProvider>
+          <SidebarShell />
+          <main className="md:ml-56 min-h-screen">
+            <div className="page-enter">{children}</div>
+          </main>
+        </AuthProvider>
       </body>
     </html>
   )

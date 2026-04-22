@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { signIn } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { signIn, useSession } from 'next-auth/react'
 
 function ShieldCheckIcon() {
   return (
@@ -60,8 +60,18 @@ function getErrorMessage(errorCode: string | null): string | null {
   return 'Authentication failed. Please try again.'
 }
 
+function getSafeCallbackUrl(callbackUrl: string | null): string {
+  if (!callbackUrl) return '/dashboard'
+  if (!callbackUrl.startsWith('/') || callbackUrl.startsWith('//')) {
+    return '/dashboard'
+  }
+  return callbackUrl
+}
+
 function LoginCard() {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const { status } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,12 +79,20 @@ function LoginCard() {
     setError(getErrorMessage(searchParams.get('error')))
   }, [searchParams])
 
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.replace(getSafeCallbackUrl(searchParams.get('callbackUrl')))
+    }
+  }, [router, searchParams, status])
+
   async function handleGoogleSignIn() {
     setLoading(true)
     setError(null)
 
     try {
-      await signIn('google', { callbackUrl: '/dashboard' })
+      await signIn('google', {
+        callbackUrl: getSafeCallbackUrl(searchParams.get('callbackUrl')),
+      })
     } catch {
       setLoading(false)
       setError('Authentication failed. Please try again.')

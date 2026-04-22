@@ -45,6 +45,21 @@ body {
   to   { background-position: 200% 0; }
 }
 
+@keyframes landingFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.landing-float {
+  animation: landingFloat 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-float {
+    animation: none;
+  }
+}
+
 .skeleton {
   background: linear-gradient(90deg, #EEE9E1 25%, #E2DAD0 50%, #EEE9E1 75%);
   background-size: 200% 100%;

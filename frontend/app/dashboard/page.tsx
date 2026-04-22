@@ -3,7 +3,7 @@ import Link from "next/link";
 import DemoSeedButton from "@/components/DemoSeedButton";
 import RecentRunsList from "@/components/RecentRunsList";
 import RunForm from "@/components/RunForm";
-import { api } from "@/lib/api";
+import { serverApi } from "@/lib/server-api";
 import type { ReliabilityOverview, RunSummary } from "@/types/run";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
   let overview: ReliabilityOverview | null = null;
 
   try {
-    [runs, overview] = await Promise.all([api.getRuns(), api.getOverview()]);
+    [runs, overview] = await Promise.all([serverApi.getRuns(), serverApi.getOverview()]);
   } catch {
     runs = [];
     overview = null;

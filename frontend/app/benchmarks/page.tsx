@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { api } from "@/lib/api";
+import { serverApi } from "@/lib/server-api";
 import type { BenchmarkOverview } from "@/types/run";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +80,7 @@ export default async function BenchmarksPage() {
   let overviews: BenchmarkOverview[] = [];
 
   try {
-    overviews = await api.getBenchmarkOverview();
+    overviews = await serverApi.getBenchmarkOverview();
   } catch {
     overviews = [];
   }

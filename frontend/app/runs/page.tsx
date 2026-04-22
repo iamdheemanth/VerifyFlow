@@ -1,12 +1,12 @@
 import Link from "next/link";
 
 import RecentRunsList from "@/components/RecentRunsList";
-import { api } from "@/lib/api";
+import { serverApi } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
 export default async function RunsPage() {
-  const runs = await api.getRuns();
+  const runs = await serverApi.getRuns();
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 md:px-10">

@@ -6,7 +6,7 @@ import LedgerSection from "@/components/LedgerSection";
 import StatusBadge from "@/components/StatusBadge";
 import TasksSection from "@/components/TasksSection";
 import TelemetryCard from "@/components/TelemetryCard";
-import { api } from "@/lib/api";
+import { serverApi } from "@/lib/server-api";
 import type { Run } from "@/types/run";
 
 export const dynamic = "force-dynamic";
@@ -128,7 +128,7 @@ export default async function RunDetailPage({
   let run: Run;
 
   try {
-    run = await api.getRun(id);
+    run = await serverApi.getRun(id);
   } catch {
     return <ErrorState />;
   }

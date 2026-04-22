@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import StatusBadge from "@/components/StatusBadge";
-import { api } from "@/lib/api";
+import { api, getAuthHeaders } from "@/lib/api";
 import type { Escalation } from "@/types/run";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
@@ -30,12 +30,14 @@ async function submitReviewerDecision(
   notes: string | null,
   reviewerKey: string
 ) {
+  const authHeaders = await getAuthHeaders();
   const response = await fetch(
     `${BASE_URL}/review/escalations/${escalationId}/decision`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
       },
       body: JSON.stringify({
         decision,
