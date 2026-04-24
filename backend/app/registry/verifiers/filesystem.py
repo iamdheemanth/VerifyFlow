@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.mcp.filesystem import FilesystemMCP
 from app.registry.base import coerce_verifier_exception, registry
 from app.schemas.verification import VerificationResult
+from app.core.filesystem_sandbox import resolve_allowed_path
 
 
 @registry.register("filesystem.write_file")
@@ -14,15 +13,15 @@ async def verify_filesystem_write_file(action_claim: dict) -> VerificationResult
     expected_content = params.get("content")
 
     try:
-        file_path = Path(str(path))
+        file_path = resolve_allowed_path(path)
         exists = file_path.exists()
         content = file_path.read_text(encoding="utf-8") if exists and file_path.is_file() else None
 
         if not exists:
             try:
                 async with FilesystemMCP() as filesystem:
-                    exists = await filesystem.file_exists(path)
-                    content = await filesystem.read_file(path) if exists else None
+                    exists = await filesystem.file_exists(str(file_path))
+                    content = await filesystem.read_file(str(file_path)) if exists else None
             except Exception as exc:
                 raise coerce_verifier_exception(exc, tool_name="filesystem.write_file") from exc
     except Exception as exc:
@@ -78,6 +77,7 @@ async def verify_filesystem_write_file(action_claim: dict) -> VerificationResult
 async def verify_filesystem_read_file(action_claim: dict) -> VerificationResult:
     result = action_claim.get("result")
     params = action_claim.get("params", {})
+    resolve_allowed_path(params.get("path"))
     expected_content = params.get("expected_content")
     verified = isinstance(result, str) and len(result) > 0
     if verified and expected_content is not None:

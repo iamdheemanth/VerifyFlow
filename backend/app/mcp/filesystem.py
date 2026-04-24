@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from mcp import StdioServerParameters
 
-from app.core.config import settings
 from app.mcp import BaseMCPClient, extract_text, normalize_tool_result
+from app.core.filesystem_sandbox import resolve_allowed_base_paths, resolve_allowed_path
 
 
 class FilesystemMCP(BaseMCPClient):
     def __init__(self):
-        allowed_paths = settings.filesystem_allowed_paths or ["/tmp/verifyflow"]
+        allowed_paths = [str(path) for path in resolve_allowed_base_paths()]
         super().__init__(
             StdioServerParameters(
                 command="npx",
@@ -20,17 +19,20 @@ class FilesystemMCP(BaseMCPClient):
         )
 
     async def write_file(self, path: str, content: str) -> dict[str, Any]:
-        result = await self._call_tool("write_file", {"path": path, "content": content})
+        safe_path = str(resolve_allowed_path(path))
+        result = await self._call_tool("write_file", {"path": safe_path, "content": content})
         return normalize_tool_result(result)
 
     async def read_file(self, path: str) -> str | None:
-        result = await self._call_tool("read_text_file", {"path": path})
+        safe_path = str(resolve_allowed_path(path))
+        result = await self._call_tool("read_text_file", {"path": safe_path})
         if result.isError:
             return None
         return extract_text(result)
 
     async def list_directory(self, path: str) -> list[str]:
-        result = await self._call_tool("list_directory", {"path": path})
+        safe_path = str(resolve_allowed_path(path))
+        result = await self._call_tool("list_directory", {"path": safe_path})
         if result.isError:
             return []
 
@@ -51,7 +53,8 @@ class FilesystemMCP(BaseMCPClient):
         return [line.strip() for line in text.splitlines() if line.strip()]
 
     async def file_exists(self, path: str) -> bool:
-        parent = str(Path(path).parent)
-        target = Path(path).name
+        safe_path = resolve_allowed_path(path)
+        parent = str(safe_path.parent)
+        target = safe_path.name
         entries = await self.list_directory(parent)
-        return target in entries or path in entries
+        return target in entries or str(safe_path) in entries

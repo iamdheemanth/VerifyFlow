@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +13,7 @@ from app.mcp.github import GitHubMCP
 from app.mcp import MCPToolError
 from app.models.domain import Task, utcnow
 from app.orchestrator.states import VerifyFlowState
+from app.core.filesystem_sandbox import resolve_allowed_path
 from app.services import reliability
 
 _browser_clients: dict[str, BrowserMCP] = {}
@@ -59,10 +59,11 @@ async def _call_github(tool_name: str, params: dict[str, Any]) -> Any:
 
 
 async def _call_filesystem(tool_name: str, params: dict[str, Any]) -> Any:
-    path = Path(str(params.get("path", "")))
+    path = resolve_allowed_path(params.get("path"))
     if tool_name == "filesystem.write_file":
         content = str(params.get("content", ""))
         path.parent.mkdir(parents=True, exist_ok=True)
+        path = resolve_allowed_path(path)
         await asyncio.to_thread(path.write_text, content, encoding="utf-8")
         return {
             "is_error": False,
@@ -407,6 +408,8 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
     except Exception as exc:
         if isinstance(exc, MCPToolError):
             error_details = exc.to_error_details(source=tool_name)
+        elif hasattr(exc, "to_error_details"):
+            error_details = exc.to_error_details(source=tool_name)
         else:
             error_details = reliability.build_error_details(
                 str(exc),
@@ -414,13 +417,14 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
                 category="execution_error",
                 retryable=False,
             )
+        error_message = error_details.get("message") if isinstance(error_details, dict) else None
         action_claim = {
             "tool_name": tool_name,
             "params": params,
             "result": None,
             "claimed_success": False,
             "claimed_at": utcnow().isoformat(),
-            "error": str(exc),
+            "error": error_message if isinstance(error_message, str) and error_message.strip() else str(exc),
             "error_details": error_details,
         }
 
