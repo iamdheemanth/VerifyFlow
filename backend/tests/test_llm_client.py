@@ -13,6 +13,7 @@ def load_llm_module(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_MODEL", "executor-model")
     monkeypatch.setenv("LLM_JUDGE_MODEL", "judge-model")
+    monkeypatch.setenv("NEXTAUTH_SECRET", "test-nextauth-secret-value-32-chars")
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("GITHUB_OWNER", "test-owner")
     monkeypatch.setenv("MAX_RETRIES", "3")

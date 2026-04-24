@@ -11,8 +11,9 @@ from app.mcp import BaseMCPClient, extract_text, normalize_tool_result
 
 class GitHubMCP(BaseMCPClient):
     def __init__(self):
+        github_token, github_owner = settings.require_github_config()
         env = os.environ.copy()
-        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = settings.github_token
+        env["GITHUB_PERSONAL_ACCESS_TOKEN"] = github_token
         super().__init__(
             StdioServerParameters(
                 command="npx",
@@ -20,7 +21,7 @@ class GitHubMCP(BaseMCPClient):
                 env=env,
             )
         )
-        self.owner = settings.github_owner
+        self.owner = github_owner
 
     async def create_file(self, repo: str, path: str, content: str, message: str) -> dict[str, Any]:
         result = await self._call_tool(

@@ -1,6 +1,6 @@
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
-import { decodeAuthToken } from '@/lib/auth'
+import { decodeAuthToken } from '@/lib/auth-token'
 
 export default withAuth(
   function middleware(req) {

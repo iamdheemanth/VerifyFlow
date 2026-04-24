@@ -15,7 +15,9 @@ import type {
   RunSummary,
 } from "@/types/run";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+import { publicEnv } from "@/lib/env";
+
+const BASE_URL = publicEnv.apiUrl;
 
 let _cachedToken: string | null = null;
 let _tokenFetchedAt: number = 0;

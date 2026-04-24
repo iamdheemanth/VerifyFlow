@@ -3,7 +3,10 @@ import 'server-only'
 import { getServerSession } from 'next-auth'
 import { type JWT } from 'next-auth/jwt'
 
-import { authOptions, encodeAuthToken } from '@/lib/auth'
+import { authOptions } from '@/lib/auth'
+import { encodeAuthToken } from '@/lib/auth-token'
+import { publicEnv } from '@/lib/env'
+import { serverEnv } from '@/lib/server-env'
 import type {
   BenchmarkOverview,
   ConfigurationComparison,
@@ -12,18 +15,17 @@ import type {
   RunSummary,
 } from '@/types/run'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api'
+const BASE_URL = publicEnv.apiUrl
 
 async function getServerAuthHeaders(): Promise<HeadersInit> {
   const session = await getServerSession(authOptions)
-  const secret = process.env.NEXTAUTH_SECRET
 
-  if (!session?.user?.id || !secret) {
+  if (!session?.user?.id) {
     return {}
   }
 
   const token = await encodeAuthToken({
-    secret,
+    secret: serverEnv.nextauthSecret,
     token: {
       sub: session.user.id,
       id: session.user.id,

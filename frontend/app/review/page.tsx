@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import StatusBadge from "@/components/StatusBadge";
 import { api, getAuthHeaders } from "@/lib/api";
+import { publicEnv } from "@/lib/env";
 import type { Escalation } from "@/types/run";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+const BASE_URL = publicEnv.apiUrl;
 
 type Decision = "approve" | "reject" | "send_back";
 

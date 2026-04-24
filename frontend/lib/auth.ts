@@ -1,17 +1,15 @@
 import { type NextAuthOptions } from 'next-auth'
 import { type JWT } from 'next-auth/jwt'
 import GoogleProvider from 'next-auth/providers/google'
-import { SignJWT, jwtVerify } from 'jose'
+
+import { encodeAuthToken, decodeAuthToken } from '@/lib/auth-token'
+import { serverEnv } from '@/lib/server-env'
 
 type GoogleProfile = {
   picture?: string | null
 }
 
 const DEFAULT_AUTH_REDIRECT_PATH = '/dashboard'
-
-function getSecretKey(secret: string) {
-  return new TextEncoder().encode(secret)
-}
 
 function getSafeRedirectPath(url: string, baseUrl?: string) {
   if (url.startsWith('/') && !url.startsWith('//')) {
@@ -34,49 +32,12 @@ function getSafeRedirectPath(url: string, baseUrl?: string) {
   return DEFAULT_AUTH_REDIRECT_PATH
 }
 
-export async function encodeAuthToken({
-  secret,
-  token,
-  maxAge,
-}: {
-  secret: string
-  token?: JWT | null
-  maxAge?: number
-}) {
-  const secretKey = getSecretKey(secret)
-  return new SignJWT((token ?? {}) as Record<string, unknown>)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(
-      Math.floor(Date.now() / 1000) + (maxAge ?? 30 * 24 * 60 * 60)
-    )
-    .sign(secretKey)
-}
-
-export async function decodeAuthToken({
-  secret,
-  token,
-}: {
-  secret: string
-  token?: string
-}) {
-  if (!token) return null
-
-  const secretKey = getSecretKey(secret)
-
-  try {
-    const { payload } = await jwtVerify(token, secretKey)
-    return payload as JWT
-  } catch {
-    return null
-  }
-}
-
 export const authOptions: NextAuthOptions = {
+  secret: serverEnv.nextauthSecret,
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: serverEnv.googleClientId,
+      clientSecret: serverEnv.googleClientSecret,
     }),
   ],
   session: {

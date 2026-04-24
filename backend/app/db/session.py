@@ -1,5 +1,4 @@
 from collections.abc import AsyncGenerator
-import os
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -10,13 +9,9 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 def _resolve_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL")
-    if database_url:
-        return database_url
+    from app.core.config import Settings
 
-    from app.core.config import settings
-
-    return settings.database_url
+    return Settings().database_url
 
 
 def _sync_database_url(database_url: str) -> str:
