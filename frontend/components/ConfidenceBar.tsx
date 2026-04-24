@@ -22,17 +22,17 @@ export default function ConfidenceBar({
   width = 48,
 }: ConfidenceBarProps) {
   if (value === null) {
-    return <span className="text-[#9C948A] text-xs">—</span>;
+    return <span className="text-[#6F6D66] text-xs">-</span>;
   }
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-mono text-[#1A1410]">
+      <span className="text-xs font-mono text-[#F5F4F0]">
         {formatConfidence(value)}
       </span>
       <div
         style={{ width: `${width}px` }}
-        className="h-1 rounded-full bg-[#E2DAD0]"
+        className="h-1 rounded-full bg-[#2A2A26]"
       >
         <div
           style={{ width: `${Math.max(0, Math.min(100, value * 100))}%` }}
@@ -42,3 +42,4 @@ export default function ConfidenceBar({
     </div>
   );
 }
+

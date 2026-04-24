@@ -65,15 +65,15 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
   }
 
   return (
-    <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
+    <section className="rounded-[2rem] border border-[#2A2A26] bg-[#141412]/80 p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.3)] backdrop-blur">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-950">Escalation Queue</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <h2 className="text-2xl font-semibold text-[#F5F4F0]">Escalation Queue</h2>
+          <p className="mt-1 text-sm text-[#6F6D66]">
             Review ambiguous runs without weakening the deterministic-first verification contract.
           </p>
         </div>
-        <div className="rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-800">
+        <div className="rounded-full bg-[#C8A882]/10 px-4 py-2 text-sm font-semibold text-[#E8D5BF]">
           {pendingCount} pending review
         </div>
       </div>
@@ -84,28 +84,28 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
         {escalations.map((escalation) => (
           <article
             key={escalation.id}
-            className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5"
+            className="rounded-[1.5rem] border border-[#2A2A26] bg-[#10100E] p-5"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">{escalation.run_id}</p>
-                <h3 className="mt-2 text-lg font-semibold text-slate-950">{escalation.failure_reason}</h3>
+                <p className="text-xs uppercase tracking-[0.25em] text-[#6F6D66]">{escalation.run_id}</p>
+                <h3 className="mt-2 text-lg font-semibold text-[#F5F4F0]">{escalation.failure_reason}</h3>
               </div>
-              <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              <span className="rounded-full bg-[#141412] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#8A8880]">
                 {escalation.status.replace("_", " ")}
               </span>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Evidence Bundle</p>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-slate-600">
+              <div className="rounded-[1.25rem] border border-[#2A2A26] bg-[#141412] p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6F6D66]">Evidence Bundle</p>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-[#8A8880]">
                   {JSON.stringify(escalation.evidence_bundle, null, 2)}
                 </pre>
               </div>
 
-              <div className="rounded-[1.25rem] border border-slate-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Reviewer Actions</p>
+              <div className="rounded-[1.25rem] border border-[#2A2A26] bg-[#141412] p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6F6D66]">Reviewer Actions</p>
                 <div className="mt-3 flex flex-col gap-3">
                   <input
                     value={reviewerNames[escalation.id] ?? ""}
@@ -113,7 +113,7 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
                       setReviewerNames((current) => ({ ...current, [escalation.id]: event.target.value }))
                     }
                     placeholder="Reviewer name"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                    className="rounded-2xl border border-[#2A2A26] px-4 py-3 text-sm text-[#8A8880] outline-none transition focus:border-[#C8A882]"
                   />
                   <textarea
                     value={notes[escalation.id] ?? ""}
@@ -122,7 +122,7 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
                     }
                     rows={4}
                     placeholder="Optional reviewer notes"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                    className="rounded-2xl border border-[#2A2A26] px-4 py-3 text-sm text-[#8A8880] outline-none transition focus:border-[#C8A882]"
                   />
                   <div className="flex flex-wrap gap-2">
                     {(Object.keys(decisionLabels) as Decision[]).map((decision) => (
@@ -131,7 +131,7 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
                         type="button"
                         disabled={isPending}
                         onClick={() => submitDecision(escalation.id, decision)}
-                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-full border border-[#2A2A26] bg-[#141412] px-4 py-2 text-sm font-semibold text-[#8A8880] transition hover:bg-[#23231F] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {decisionLabels[decision]}
                       </button>
@@ -140,20 +140,20 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
                 </div>
 
                 {escalation.reviewer_decisions.length ? (
-                  <div className="mt-4 border-t border-slate-200 pt-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Decision History</p>
+                  <div className="mt-4 border-t border-[#2A2A26] pt-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-[#6F6D66]">Decision History</p>
                     <div className="mt-3 grid gap-3">
                       {escalation.reviewer_decisions.map((decision) => (
-                        <div key={decision.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div key={decision.id} className="rounded-2xl border border-[#2A2A26] bg-[#10100E] p-3">
                           <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm font-semibold text-slate-900">{decision.decision}</span>
-                            <span className="text-xs text-slate-500">{new Date(decision.created_at).toLocaleString()}</span>
+                            <span className="text-sm font-semibold text-[#F5F4F0]">{decision.decision}</span>
+                            <span className="text-xs text-[#6F6D66]">{new Date(decision.created_at).toLocaleString()}</span>
                           </div>
-                          <p className="mt-2 text-sm text-slate-600">
+                          <p className="mt-2 text-sm text-[#8A8880]">
                             Reviewer: {decision.reviewer_name || "Unspecified"}
                           </p>
                           {decision.notes ? (
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{decision.notes}</p>
+                            <p className="mt-2 text-sm leading-6 text-[#8A8880]">{decision.notes}</p>
                           ) : null}
                         </div>
                       ))}
@@ -168,3 +168,4 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
     </section>
   );
 }
+

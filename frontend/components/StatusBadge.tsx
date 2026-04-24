@@ -14,39 +14,39 @@ function getStatusTone(status: string): Tone {
   switch (status) {
     case "completed":
       return {
-        bg: "bg-[#DCFCE7]",
-        text: "text-[#166534]",
-        dotColor: "bg-[#166534]",
+        bg: "bg-emerald-500/10",
+        text: "text-emerald-300",
+        dotColor: "bg-emerald-300",
       };
     case "executing":
     case "planning":
     case "running":
       return {
-        bg: "bg-[#FEF3C7]",
-        text: "text-[#B45309]",
-        dotColor: "bg-[#B45309]",
+        bg: "bg-[#C8A882]/10",
+        text: "text-[#E8D5BF]",
+        dotColor: "bg-[#C8A882]",
         executing: true,
       };
     case "failed":
     case "rejected":
       return {
-        bg: "bg-[#FEE2E2]",
-        text: "text-[#991B1B]",
-        dotColor: "bg-[#991B1B]",
+        bg: "bg-red-500/10",
+        text: "text-red-300",
+        dotColor: "bg-red-300",
       };
     case "escalated":
     case "pending_review":
     case "sent_back":
       return {
-        bg: "bg-[#DBEAFE]",
-        text: "text-[#1D4ED8]",
-        dotColor: "bg-[#1D4ED8]",
+        bg: "bg-sky-500/10",
+        text: "text-sky-300",
+        dotColor: "bg-sky-300",
       };
     default:
       return {
-        bg: "bg-[#EEE9E1]",
-        text: "text-[#5C5248]",
-        dotColor: "bg-[#9C948A]",
+        bg: "bg-[#23231F]",
+        text: "text-[#8A8880]",
+        dotColor: "bg-[#6F6D66]",
       };
   }
 }
@@ -78,3 +78,4 @@ export default function StatusBadge({
     </span>
   );
 }
+

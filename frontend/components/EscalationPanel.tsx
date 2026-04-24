@@ -7,7 +7,7 @@ type EscalationPanelProps = {
 export default function EscalationPanel({ escalations }: EscalationPanelProps) {
   if (escalations.length === 0) {
     return (
-      <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-[1.5rem] border border-dashed border-[#2A2A26] bg-[#10100E] px-6 py-10 text-center text-sm text-[#6F6D66]">
         No escalations for this run.
       </div>
     );
@@ -16,41 +16,41 @@ export default function EscalationPanel({ escalations }: EscalationPanelProps) {
   return (
     <div className="grid gap-4">
       {escalations.map((escalation) => (
-        <article key={escalation.id} className="rounded-[1.5rem] border border-amber-200 bg-amber-50/70 p-5">
+        <article key={escalation.id} className="rounded-[1.5rem] border border-[#3A332B] bg-[#C8A882]/10 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Escalation</p>
-              <h3 className="mt-2 text-lg font-semibold text-slate-950">{escalation.status}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{escalation.failure_reason}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#C8A882]">Escalation</p>
+              <h3 className="mt-2 text-lg font-semibold text-[#F5F4F0]">{escalation.status}</h3>
+              <p className="mt-2 text-sm leading-6 text-[#8A8880]">{escalation.failure_reason}</p>
             </div>
-            <div className="text-right text-sm text-slate-500">
+            <div className="text-right text-sm text-[#6F6D66]">
               <p>{new Date(escalation.created_at).toLocaleString()}</p>
               {escalation.resolved_at ? <p>Resolved {new Date(escalation.resolved_at).toLocaleString()}</p> : null}
             </div>
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl bg-white/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Why review was needed</p>
-              <div className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+            <div className="rounded-2xl bg-[#141412]/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F6D66]">Why review was needed</p>
+              <div className="mt-3 space-y-2 text-sm leading-6 text-[#8A8880]">
                 {summarizeEscalation(escalation).map((line) => (
                   <p key={line}>{line}</p>
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl bg-white/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Reviewer decisions</p>
+            <div className="rounded-2xl bg-[#141412]/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F6D66]">Reviewer decisions</p>
               <div className="mt-3 space-y-3">
                 {escalation.reviewer_decisions.map((decision) => (
-                  <div key={decision.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <p className="text-sm font-semibold text-slate-900">
+                  <div key={decision.id} className="rounded-2xl border border-[#2A2A26] bg-[#141412] p-3">
+                    <p className="text-sm font-semibold text-[#F5F4F0]">
                       {decision.decision} {decision.reviewer_name ? `by ${decision.reviewer_name}` : ""}
                     </p>
-                    {decision.notes ? <p className="mt-1 text-sm text-slate-600">{decision.notes}</p> : null}
+                    {decision.notes ? <p className="mt-1 text-sm text-[#8A8880]">{decision.notes}</p> : null}
                   </div>
                 ))}
                 {escalation.reviewer_decisions.length === 0 ? (
-                  <p className="text-sm text-slate-500">No reviewer decision yet.</p>
+                  <p className="text-sm text-[#6F6D66]">No reviewer decision yet.</p>
                 ) : null}
               </div>
             </div>
@@ -88,3 +88,4 @@ function summarizeEscalation(escalation: Escalation): string[] {
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
+

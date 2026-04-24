@@ -32,7 +32,7 @@ function taskBorderClass(status: string) {
     return "border-[#991B1B]";
   }
 
-  return "border-[#C8BEB2]";
+  return "border-[#3A3A34]";
 }
 
 export default function TasksSection({ run }: TasksSectionProps) {
@@ -89,11 +89,11 @@ export default function TasksSection({ run }: TasksSectionProps) {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#E2DAD0] bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-[#2A2A26] bg-[#141412] shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
       <div className="px-6 py-5">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-[#1A1410]">Tasks</h2>
-          <span className="bg-[#EEE9E1] text-[#5C5248] text-xs rounded-full px-2 py-0.5">
+          <h2 className="text-sm font-semibold text-[#F5F4F0]">Tasks</h2>
+          <span className="bg-[#23231F] text-[#8A8880] text-xs rounded-full px-2 py-0.5">
             {run.tasks.length}
           </span>
         </div>
@@ -107,7 +107,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
         </div>
       ) : null}
 
-      <div className="divide-y divide-[#E2DAD0]">
+      <div className="divide-y divide-[#2A2A26]">
         {run.tasks.map((task, index) => {
           const effectiveStatus = taskStatuses[task.id] ?? task.status;
           const isExpanded = expandedTaskIds.has(task.id);
@@ -122,19 +122,19 @@ export default function TasksSection({ run }: TasksSectionProps) {
                   effectiveStatus
                 )}`}
               >
-                <span className="text-[10px] font-mono text-[#9C948A]">
+                <span className="text-[10px] font-mono text-[#6F6D66]">
                   {index + 1}
                 </span>
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="break-words text-sm font-medium text-[#1A1410]">
+                <p className="break-words text-sm font-medium text-[#F5F4F0]">
                   {task.description}
                 </p>
-                <p className="mt-0.5 break-words text-xs leading-5 text-[#9C948A]">
+                <p className="mt-0.5 break-words text-xs leading-5 text-[#6F6D66]">
                   {task.success_criteria}
                 </p>
-                <span className="mt-1.5 inline-flex max-w-full items-center break-all rounded bg-[#EEE9E1] px-2 py-0.5 font-mono text-[10px] text-[#5C5248]">
+                <span className="mt-1.5 inline-flex max-w-full items-center break-all rounded bg-[#23231F] px-2 py-0.5 font-mono text-[10px] text-[#8A8880]">
                   {task.tool_name}
                 </span>
 
@@ -148,7 +148,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
                       {isExpanded ? "Hide claimed result" : "Show claimed result"}
                     </button>
                     {isExpanded ? (
-                      <pre className="mt-2 bg-[#EEE9E1] text-[#5C5248] text-[11px] p-3 rounded-xl overflow-auto max-h-40 font-mono">
+                      <pre className="mt-2 bg-[#23231F] text-[#8A8880] text-[11px] p-3 rounded-xl overflow-auto max-h-40 font-mono">
                         {JSON.stringify(task.claimed_result, null, 2)}
                       </pre>
                     ) : null}
@@ -171,3 +171,4 @@ export default function TasksSection({ run }: TasksSectionProps) {
     </section>
   );
 }
+

@@ -57,8 +57,8 @@ function MetricCell({
   barValue?: number;
 }) {
   return (
-    <div className="bg-[#F7F3EE] rounded-xl p-3">
-      <span className="text-[9px] uppercase tracking-widest text-[#9C948A]">
+    <div className="bg-[#10100E] rounded-xl p-3">
+      <span className="text-[9px] uppercase tracking-widest text-[#6F6D66]">
         {label}
       </span>
       <span className={`block text-lg font-semibold font-mono mt-0.5 ${valueClassName}`}>
@@ -88,19 +88,19 @@ export default async function BenchmarksPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 md:px-10">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-[#1A1410]">
+        <h1 className="text-3xl font-semibold tracking-tight text-[#F5F4F0]">
           Benchmarks
         </h1>
-        <p className="mt-1 text-sm text-[#9C948A]">
+        <p className="mt-1 text-sm text-[#6F6D66]">
           Suite-level accuracy and reliability metrics.
         </p>
       </div>
 
       {overviews.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-[#E2DAD0] bg-white py-16 text-center shadow-sm">
+        <div className="mt-6 rounded-2xl border border-[#2A2A26] bg-[#141412] py-16 text-center shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
           <svg
             aria-hidden="true"
-            className="mx-auto h-10 w-10 text-[#C8BEB2]"
+            className="mx-auto h-10 w-10 text-[#6F6D66]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -112,12 +112,12 @@ export default async function BenchmarksPage() {
               d="M5 19V9m7 10V5m7 14v-7"
             />
           </svg>
-          <p className="mt-4 text-base font-medium text-[#1A1410]">
+          <p className="mt-4 text-base font-medium text-[#F5F4F0]">
             No benchmark runs yet
           </p>
           <Link
             href="/dashboard"
-            className="mt-5 inline-flex items-center rounded-xl bg-[#1A1410] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2D2520]"
+            className="mt-5 inline-flex items-center rounded-xl bg-[#C8A882] px-4 py-2.5 text-sm font-semibold text-[#0A0A08] transition-colors hover:bg-[#D4B592]"
           >
             Run your first benchmark →
           </Link>
@@ -127,13 +127,13 @@ export default async function BenchmarksPage() {
           {overviews.map((overview) => (
             <article
               key={overview.suite_id ?? overview.suite_name}
-              className="bg-white border border-[#E2DAD0] rounded-2xl p-6 shadow-sm"
+              className="bg-[#141412] border border-[#2A2A26] rounded-2xl p-6 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]"
             >
               <header>
-                <h2 className="text-base font-semibold text-[#1A1410]">
+                <h2 className="text-base font-semibold text-[#F5F4F0]">
                   {overview.suite_name}
                 </h2>
-                <p className="text-xs text-[#9C948A] mt-0.5">
+                <p className="text-xs text-[#6F6D66] mt-0.5">
                   {overview.run_count} runs
                 </p>
               </header>
@@ -162,7 +162,7 @@ export default async function BenchmarksPage() {
                 <MetricCell
                   label="Avg Confidence"
                   value={percent(overview.average_confidence)}
-                  valueClassName="text-[#1A1410]"
+                  valueClassName="text-[#F5F4F0]"
                   barValue={overview.average_confidence}
                 />
                 <MetricCell
@@ -186,7 +186,7 @@ export default async function BenchmarksPage() {
                 <MetricCell
                   label="Run Count"
                   value={overview.run_count.toString()}
-                  valueClassName="text-[#1A1410]"
+                  valueClassName="text-[#F5F4F0]"
                 />
               </div>
 
@@ -210,3 +210,4 @@ export default async function BenchmarksPage() {
     </div>
   );
 }
+

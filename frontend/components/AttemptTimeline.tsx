@@ -7,7 +7,7 @@ type AttemptTimelineProps = {
 export default function AttemptTimeline({ attempts }: AttemptTimelineProps) {
   if (attempts.length === 0) {
     return (
-      <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-[1.5rem] border border-dashed border-[#2A2A26] bg-[#10100E] px-6 py-10 text-center text-sm text-[#6F6D66]">
         No execution attempts captured yet.
       </div>
     );
@@ -16,39 +16,39 @@ export default function AttemptTimeline({ attempts }: AttemptTimelineProps) {
   return (
     <div className="grid gap-4">
       {attempts.map((attempt) => (
-        <article key={attempt.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+        <article key={attempt.id} className="rounded-[1.5rem] border border-[#2A2A26] bg-[#141412] p-5 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Attempt {attempt.attempt_index + 1}</p>
-              <h3 className="mt-2 text-lg font-semibold text-slate-950">{attempt.tool_name}</h3>
-              <p className="mt-2 text-sm text-slate-600">Outcome: {attempt.outcome ?? "pending"}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#6F6D66]">Attempt {attempt.attempt_index + 1}</p>
+              <h3 className="mt-2 text-lg font-semibold text-[#F5F4F0]">{attempt.tool_name}</h3>
+              <p className="mt-2 text-sm text-[#8A8880]">Outcome: {attempt.outcome ?? "pending"}</p>
             </div>
-            <div className="text-right text-sm text-slate-500">
+            <div className="text-right text-sm text-[#6F6D66]">
               <p>Total {attempt.total_latency_ms ? `${Math.round(attempt.total_latency_ms)} ms` : "—"}</p>
               <p>Confidence {attempt.final_confidence !== null ? `${Math.round(attempt.final_confidence * 100)}%` : "—"}</p>
             </div>
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Claim</p>
-              <div className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+            <div className="rounded-2xl bg-[#10100E] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F6D66]">Claim</p>
+              <div className="mt-3 space-y-2 text-sm leading-6 text-[#8A8880]">
                 {summarizeClaim(attempt).map((line) => (
                   <p key={line}>{line}</p>
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Verification</p>
-              <div className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+            <div className="rounded-2xl bg-[#10100E] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F6D66]">Verification</p>
+              <div className="mt-3 space-y-2 text-sm leading-6 text-[#8A8880]">
                 {summarizeVerification(attempt).map((line) => (
                   <p key={line}>{line}</p>
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Telemetry</p>
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
+            <div className="rounded-2xl bg-[#10100E] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F6D66]">Telemetry</p>
+              <div className="mt-3 space-y-2 text-sm text-[#8A8880]">
                 <p>Executor latency: {attempt.executor_latency_ms ? `${Math.round(attempt.executor_latency_ms)} ms` : "—"}</p>
                 <p>Verifier latency: {attempt.verifier_latency_ms ? `${Math.round(attempt.verifier_latency_ms)} ms` : "—"}</p>
                 <p>Tokens: {attempt.token_total}</p>
@@ -120,3 +120,4 @@ function summarizeVerification(attempt: TaskAttempt): string[] {
   }
   return lines.slice(0, 5);
 }
+

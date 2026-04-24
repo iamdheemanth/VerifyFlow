@@ -3,18 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --bg-base: #F7F3EE;
-  --bg-raised: #FFFFFF;
-  --bg-sunken: #EEE9E1;
-  --border-subtle: #E2DAD0;
-  --border-strong: #C8BEB2;
-  --ink-primary: #1A1410;
-  --ink-secondary: #5C5248;
-  --ink-tertiary: #9C948A;
-  --accent-amber: #B45309;
-  --accent-green: #166534;
-  --accent-red: #991B1B;
-  --accent-blue: #1D4ED8;
+  --bg-base: #0A0A08;
+  --bg-raised: #141412;
+  --bg-sunken: #10100E;
+  --border-subtle: #2A2A26;
+  --border-strong: #3A3A34;
+  --ink-primary: #F5F4F0;
+  --ink-secondary: #8A8880;
+  --ink-tertiary: #6F6D66;
+  --accent-amber: #C8A882;
+  --accent-green: #34D399;
+  --accent-red: #F87171;
+  --accent-blue: #93C5FD;
 }
 
 body {
@@ -23,12 +23,6 @@ body {
   min-height: 100vh;
   font-family: var(--font-geist-sans), sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-@media (min-width: 768px) {
-  body[data-sidebar="hidden"] main {
-    margin-left: 0 !important;
-  }
 }
 
 @keyframes fadeIn {
@@ -61,7 +55,7 @@ body {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #EEE9E1 25%, #E2DAD0 50%, #EEE9E1 75%);
+  background: linear-gradient(90deg, #141412 25%, #23231F 50%, #141412 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 6px;

@@ -191,10 +191,10 @@ export default function ReviewPage() {
     <div className="max-w-7xl mx-auto px-6 py-8 md:px-10">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-[#1A1410]">
+          <h1 className="text-3xl font-semibold tracking-tight text-[#F5F4F0]">
             Review Queue
           </h1>
-          <p className="mt-1 text-sm text-[#9C948A]">
+          <p className="mt-1 text-sm text-[#6F6D66]">
             Human-in-the-loop decisions for escalated tasks.
           </p>
         </div>
@@ -211,7 +211,7 @@ export default function ReviewPage() {
               setLoading(true);
               void loadEscalations();
             }}
-            className="inline-flex items-center rounded-xl border border-[#E2DAD0] bg-[#F7F3EE] px-4 py-2 text-sm font-medium text-[#5C5248] transition-colors hover:bg-[#EEE9E1] hover:text-[#1A1410]"
+            className="inline-flex items-center rounded-xl border border-[#2A2A26] bg-[#10100E] px-4 py-2 text-sm font-medium text-[#8A8880] transition-colors hover:bg-[#23231F] hover:text-[#F5F4F0]"
           >
             Refresh
           </button>
@@ -223,7 +223,7 @@ export default function ReviewPage() {
       ) : null}
 
       {!loading && escalations.length === 0 ? (
-        <div className="rounded-2xl border border-[#E2DAD0] bg-white py-16 text-center shadow-sm">
+        <div className="rounded-2xl border border-[#2A2A26] bg-[#141412] py-16 text-center shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
           <svg
             aria-hidden="true"
             className="mx-auto h-12 w-12 text-[#166534]"
@@ -238,17 +238,17 @@ export default function ReviewPage() {
               d="m5 13 4 4L19 7"
             />
           </svg>
-          <p className="mt-4 text-base font-medium text-[#1A1410]">
+          <p className="mt-4 text-base font-medium text-[#F5F4F0]">
             Queue is clear
           </p>
-          <p className="mt-1 text-sm text-[#9C948A]">
+          <p className="mt-1 text-sm text-[#6F6D66]">
             All escalations have been resolved.
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           {loading && escalations.length === 0 ? (
-            <div className="rounded-2xl border border-[#E2DAD0] bg-white px-6 py-8 shadow-sm">
+            <div className="rounded-2xl border border-[#2A2A26] bg-[#141412] px-6 py-8 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, index) => (
                   <div key={index} className="space-y-2">
@@ -275,24 +275,24 @@ export default function ReviewPage() {
             return (
               <div
                 key={escalation.id}
-                className="overflow-hidden rounded-2xl border border-[#E2DAD0] bg-white shadow-sm"
+                className="overflow-hidden rounded-2xl border border-[#2A2A26] bg-[#141412] shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]"
                 style={
                   escalation.status === "pending_review"
                     ? { borderLeft: "4px solid #B45309" }
                     : undefined
                 }
               >
-                <div className="flex items-center justify-between border-b border-[#E2DAD0] px-6 py-4">
+                <div className="flex items-center justify-between border-b border-[#2A2A26] px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-[#1A1410]">
+                    <span className="text-sm font-medium text-[#F5F4F0]">
                       Escalation
                     </span>
-                    <span className="rounded-lg bg-[#EEE9E1] px-2 py-1 font-mono text-[10px] text-[#5C5248]">
+                    <span className="rounded-lg bg-[#23231F] px-2 py-1 font-mono text-[10px] text-[#8A8880]">
                       {shortId}
                     </span>
                     <StatusBadge status={escalation.status} />
                   </div>
-                  <span className="text-xs text-[#9C948A]">
+                  <span className="text-xs text-[#6F6D66]">
                     {formatCreatedAt(escalation.created_at)}
                   </span>
                 </div>
@@ -313,7 +313,7 @@ export default function ReviewPage() {
                     </Link>
                   </div>
 
-                  <div className="rounded-xl bg-[#EEE9E1] px-4 py-3 text-sm text-[#5C5248]">
+                  <div className="rounded-xl bg-[#23231F] px-4 py-3 text-sm text-[#8A8880]">
                     {escalation.failure_reason}
                   </div>
 
@@ -326,7 +326,7 @@ export default function ReviewPage() {
                       {isEvidenceOpen ? "Hide evidence" : "Show evidence"}
                     </button>
                     {isEvidenceOpen ? (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-[#EEE9E1] p-3 font-mono text-[11px] text-[#5C5248]">
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-[#23231F] p-3 font-mono text-[11px] text-[#8A8880]">
                         {JSON.stringify(escalation.evidence_bundle, null, 2)}
                       </pre>
                     ) : null}
@@ -334,14 +334,14 @@ export default function ReviewPage() {
                 </div>
 
                 {escalation.status === "pending_review" ? (
-                  <div className="border-t border-[#E2DAD0] bg-[#FAFAF9] px-6 py-5">
-                    <h2 className="mb-4 text-sm font-medium text-[#1A1410]">
+                  <div className="border-t border-[#2A2A26] bg-[#10100E] px-6 py-5">
+                    <h2 className="mb-4 text-sm font-medium text-[#F5F4F0]">
                       Submit Decision
                     </h2>
 
                     <div className="space-y-3">
                       <label className="block">
-                        <span className="mb-1.5 block text-xs text-[#5C5248]">
+                        <span className="mb-1.5 block text-xs text-[#8A8880]">
                           Reviewer Key
                         </span>
                         <input
@@ -354,12 +354,12 @@ export default function ReviewPage() {
                               event.target.value
                             )
                           }
-                          className="w-full rounded-xl border border-[#C8BEB2] bg-[#F7F3EE] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
+                          className="w-full rounded-xl border border-[#3A3A34] bg-[#10100E] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
                         />
                       </label>
 
                       <label className="block">
-                        <span className="mb-1.5 block text-xs text-[#5C5248]">
+                        <span className="mb-1.5 block text-xs text-[#8A8880]">
                           Display Name
                         </span>
                         <input
@@ -372,12 +372,12 @@ export default function ReviewPage() {
                               event.target.value
                             )
                           }
-                          className="w-full rounded-xl border border-[#C8BEB2] bg-[#F7F3EE] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
+                          className="w-full rounded-xl border border-[#3A3A34] bg-[#10100E] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
                         />
                       </label>
 
                       <label className="block">
-                        <span className="mb-1.5 block text-xs text-[#5C5248]">
+                        <span className="mb-1.5 block text-xs text-[#8A8880]">
                           Notes
                         </span>
                         <textarea
@@ -390,7 +390,7 @@ export default function ReviewPage() {
                               event.target.value
                             )
                           }
-                          className="w-full rounded-xl border border-[#C8BEB2] bg-[#F7F3EE] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
+                          className="w-full rounded-xl border border-[#3A3A34] bg-[#10100E] px-3 py-2 text-sm focus:border-[#9C948A] focus:outline-none"
                         />
                       </label>
                     </div>
@@ -401,19 +401,19 @@ export default function ReviewPage() {
                           decision: "approve" as const,
                           label: "Approve",
                           className:
-                            "bg-[#166534] hover:bg-[#14532D] text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+                            "bg-emerald-500/15 hover:bg-emerald-500/20 text-emerald-200 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
                         },
                         {
                           decision: "reject" as const,
                           label: "Reject",
                           className:
-                            "bg-[#991B1B] hover:bg-[#7F1D1D] text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+                            "bg-red-500/15 hover:bg-red-500/20 text-red-200 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
                         },
                         {
                           decision: "send_back" as const,
                           label: "Send Back",
                           className:
-                            "rounded-xl border border-[#E2DAD0] bg-[#F7F3EE] px-4 py-2 text-sm font-medium text-[#5C5248] transition-colors hover:bg-[#EEE9E1] hover:text-[#1A1410]",
+                            "rounded-xl border border-[#2A2A26] bg-[#10100E] px-4 py-2 text-sm font-medium text-[#8A8880] transition-colors hover:bg-[#23231F] hover:text-[#F5F4F0]",
                         },
                       ]).map((button) => {
                         const isActive =
@@ -477,8 +477,8 @@ export default function ReviewPage() {
                 ) : null}
 
                 {escalation.reviewer_decisions.length > 0 ? (
-                  <div className="border-t border-[#E2DAD0] px-6 py-4">
-                    <h3 className="mb-3 text-[10px] uppercase tracking-widest text-[#9C948A]">
+                  <div className="border-t border-[#2A2A26] px-6 py-4">
+                    <h3 className="mb-3 text-[10px] uppercase tracking-widest text-[#6F6D66]">
                       Decision History
                     </h3>
                     <div className="space-y-2">
@@ -488,15 +488,15 @@ export default function ReviewPage() {
                           className="flex flex-wrap items-center gap-2 text-xs"
                         >
                           <StatusBadge status={decision.decision} />
-                          <span className="font-medium text-[#1A1410]">
+                          <span className="font-medium text-[#F5F4F0]">
                             {decision.reviewer_name ?? "Unknown reviewer"}
                           </span>
                           {decision.notes ? (
-                            <span className="truncate italic text-[#9C948A]">
+                            <span className="truncate italic text-[#6F6D66]">
                               {decision.notes}
                             </span>
                           ) : null}
-                          <span className="text-[#9C948A]">
+                          <span className="text-[#6F6D66]">
                             {formatCreatedAt(decision.created_at)}
                           </span>
                         </div>
@@ -512,3 +512,4 @@ export default function ReviewPage() {
     </div>
   );
 }
+

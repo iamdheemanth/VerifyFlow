@@ -49,7 +49,7 @@ export default function DemoSeedButton() {
           }
         })
       }
-      className="border border-[#C8BEB2] bg-white hover:bg-[#F7F3EE] text-[#5C5248] text-sm rounded-xl px-3 py-1.5 transition-colors disabled:opacity-50"
+      className="border border-[#3A3A34] bg-[#141412] hover:bg-[#10100E] text-[#8A8880] text-sm rounded-xl px-3 py-1.5 transition-colors disabled:opacity-50"
     >
       {isPending ? (
         <span className="inline-flex items-center gap-2">
@@ -85,3 +85,4 @@ export default function DemoSeedButton() {
     </button>
   );
 }
+

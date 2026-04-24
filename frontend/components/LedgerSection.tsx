@@ -46,7 +46,7 @@ function methodClasses(method: LedgerEntry["verification_method"]) {
     return "bg-[#CCFBF1] text-[#0F766E]";
   }
 
-  return "bg-[#EEE9E1] text-[#5C5248]";
+  return "bg-[#23231F] text-[#8A8880]";
 }
 
 function methodLabel(method: LedgerEntry["verification_method"]) {
@@ -109,12 +109,12 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
   }, [runId]);
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#E2DAD0] bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-[#2A2A26] bg-[#141412] shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
       <div className="px-5 py-4">
-        <h2 className="text-sm font-semibold text-[#1A1410]">
+        <h2 className="text-sm font-semibold text-[#F5F4F0]">
           Verification Ledger
         </h2>
-        <p className="text-xs text-[#9C948A] mt-0.5">
+        <p className="text-xs text-[#6F6D66] mt-0.5">
           Immutable record of all verification decisions.
         </p>
       </div>
@@ -131,13 +131,13 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
         </div>
       ) : error ? (
         <div className="px-5 pb-5">
-          <p className="text-xs text-[#9C948A]">{error}</p>
+          <p className="text-xs text-[#6F6D66]">{error}</p>
         </div>
       ) : entries.length === 0 ? (
         <div className="px-5 pb-8 pt-2 text-center">
           <svg
             aria-hidden="true"
-            className="mx-auto h-6 w-6 text-[#C8BEB2]"
+            className="mx-auto h-6 w-6 text-[#6F6D66]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -149,12 +149,12 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
               d="M9 12h6m-6 4h6M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"
             />
           </svg>
-          <p className="mt-3 text-sm text-[#5C5248]">No ledger entries yet</p>
+          <p className="mt-3 text-sm text-[#8A8880]">No ledger entries yet</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-[#F7F3EE] text-[#9C948A]">
+            <thead className="bg-[#10100E] text-[#6F6D66]">
               <tr>
                 <th className="px-5 py-3 text-left font-medium">Task</th>
                 <th className="px-4 py-3 text-left font-medium">Method</th>
@@ -164,11 +164,11 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
                 <th className="px-4 py-3 text-left font-medium">Time</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E2DAD0]">
+            <tbody className="divide-y divide-[#2A2A26]">
               {entries.map((entry) => (
                 <tr key={entry.id}>
                   <td
-                    className="px-5 py-3.5 text-[#1A1410]"
+                    className="px-5 py-3.5 text-[#F5F4F0]"
                     title={entry.task_description}
                   >
                     {truncate(entry.task_description, 50)}
@@ -185,7 +185,7 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
                       {entry.judge_reasoning ? (
                         <span
                           title={entry.judge_reasoning}
-                          className="text-[#9C948A]"
+                          className="text-[#6F6D66]"
                         >
                           ⓘ
                         </span>
@@ -194,7 +194,7 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex flex-col gap-1">
-                      <span className="font-medium text-[#1A1410]">
+                      <span className="font-medium text-[#F5F4F0]">
                         {Math.round(entry.confidence * 100)}%
                       </span>
                       <div className="h-1 w-12 rounded-full bg-[#E2DAD0]">
@@ -224,12 +224,12 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
                     </span>
                   </td>
                   <td
-                    className="px-4 py-3.5 text-[#5C5248]"
+                    className="px-4 py-3.5 text-[#8A8880]"
                     title={entry.evidence}
                   >
                     {truncate(entry.evidence, 80)}
                   </td>
-                  <td className="px-4 py-3.5 text-[#9C948A]">
+                  <td className="px-4 py-3.5 text-[#6F6D66]">
                     {relativeTime(entry.created_at)}
                   </td>
                 </tr>
@@ -241,3 +241,4 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
     </section>
   );
 }
+

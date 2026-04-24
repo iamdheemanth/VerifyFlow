@@ -37,12 +37,12 @@ function segmentWidth(count: number, total: number) {
 export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
   if (telemetry === null) {
     return (
-      <section className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#1A1410]">Telemetry</h2>
+      <section className="rounded-2xl border border-[#2A2A26] bg-[#141412] p-5 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
+        <h2 className="text-sm font-semibold text-[#F5F4F0]">Telemetry</h2>
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <svg
             aria-hidden="true"
-            className="h-6 w-6 text-[#C8BEB2]"
+            className="h-6 w-6 text-[#6F6D66]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -54,7 +54,7 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
               d="M12 7v5l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
             />
           </svg>
-          <p className="mt-3 text-sm text-[#9C948A]">No telemetry data yet.</p>
+          <p className="mt-3 text-sm text-[#6F6D66]">No telemetry data yet.</p>
         </div>
       </section>
     );
@@ -69,59 +69,59 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
     {
       label: "Executor Latency",
       value: formatLatency(telemetry.total_executor_latency_ms),
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Verifier Latency",
       value: formatLatency(telemetry.total_verifier_latency_ms),
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Total Retries",
       value: `${telemetry.total_retry_count}`,
       valueClassName: `text-base font-semibold font-mono mt-0.5 block ${
-        telemetry.total_retry_count > 0 ? "text-[#B45309]" : "text-[#1A1410]"
+        telemetry.total_retry_count > 0 ? "text-[#B45309]" : "text-[#F5F4F0]"
       }`,
     },
     {
       label: "Tool Calls",
       value: `${telemetry.total_tool_calls}`,
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Tokens In",
       value: telemetry.total_token_input.toLocaleString(),
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Tokens Out",
       value: telemetry.total_token_output.toLocaleString(),
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Total Cost",
       value: `$${telemetry.total_estimated_cost_usd.toFixed(4)}`,
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
     },
     {
       label: "Avg Confidence",
       value: `${Math.round(telemetry.average_confidence * 100)}%`,
-      valueClassName: "text-base font-semibold font-mono text-[#1A1410] mt-0.5 block",
+      valueClassName: "text-base font-semibold font-mono text-[#F5F4F0] mt-0.5 block",
       barValue: telemetry.average_confidence,
     },
   ];
 
   return (
-    <section className="rounded-2xl border border-[#E2DAD0] bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-[#1A1410]">Telemetry</h2>
-      <p className="mt-1 break-all font-mono text-[10px] text-[#9C948A]">
+    <section className="rounded-2xl border border-[#2A2A26] bg-[#141412] p-5 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
+      <h2 className="text-sm font-semibold text-[#F5F4F0]">Telemetry</h2>
+      <p className="mt-1 break-all font-mono text-[10px] text-[#6F6D66]">
         {telemetry.updated_at}
       </p>
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {stats.map((stat) => (
-          <div key={stat.label} className="min-w-0 rounded-xl bg-[#F7F3EE] p-3">
-            <span className="block text-[9px] uppercase tracking-widest text-[#9C948A]">
+          <div key={stat.label} className="min-w-0 rounded-xl bg-[#10100E] p-3">
+            <span className="block text-[9px] uppercase tracking-widest text-[#6F6D66]">
               {stat.label}
             </span>
             <span className={`${stat.valueClassName} break-words`}>{stat.value}</span>
@@ -146,10 +146,10 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
       </div>
 
       <div className="mt-4">
-        <div className="text-[10px] uppercase tracking-widest text-[#9C948A] mb-2">
+        <div className="text-[10px] uppercase tracking-widest text-[#6F6D66] mb-2">
           Verification Methods
         </div>
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-[#EEE9E1]">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-[#23231F]">
           <div
             className="bg-[#9C948A]"
             style={{
@@ -179,7 +179,7 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-[#9C948A]">
+        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-[#6F6D66]">
           <div className="inline-flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-[#9C948A]" />
             <span>Deterministic {telemetry.deterministic_verifications}</span>
@@ -197,3 +197,4 @@ export default function TelemetryCard({ telemetry }: TelemetryCardProps) {
     </section>
   );
 }
+

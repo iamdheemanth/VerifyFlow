@@ -6,9 +6,9 @@ type RunTelemetrySummaryProps = {
 
 function metric(value: string, label: string) {
   return (
-    <div className="rounded-[1.25rem] border border-slate-200 bg-slate-50 p-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+    <div className="rounded-[1.25rem] border border-[#2A2A26] bg-[#10100E] p-4">
+      <p className="text-xs uppercase tracking-[0.2em] text-[#6F6D66]">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-[#F5F4F0]">{value}</p>
     </div>
   );
 }
@@ -16,7 +16,7 @@ function metric(value: string, label: string) {
 export default function RunTelemetrySummary({ telemetry }: RunTelemetrySummaryProps) {
   if (!telemetry) {
     return (
-      <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-[1.5rem] border border-dashed border-[#2A2A26] bg-[#10100E] px-6 py-10 text-center text-sm text-[#6F6D66]">
         No telemetry captured yet.
       </div>
     );
@@ -35,3 +35,4 @@ export default function RunTelemetrySummary({ telemetry }: RunTelemetrySummaryPr
     </div>
   );
 }
+

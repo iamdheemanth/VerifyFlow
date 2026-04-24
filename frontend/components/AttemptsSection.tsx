@@ -41,11 +41,11 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#E2DAD0] bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-[#2A2A26] bg-[#141412] shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
       <div className="flex items-center justify-between gap-4 px-5 py-4">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-[#1A1410]">Attempts</h2>
-          <span className="rounded-full bg-[#EEE9E1] px-2 py-0.5 text-xs text-[#5C5248]">
+          <h2 className="text-sm font-semibold text-[#F5F4F0]">Attempts</h2>
+          <span className="rounded-full bg-[#23231F] px-2 py-0.5 text-xs text-[#8A8880]">
             {attempts.length}
           </span>
         </div>
@@ -53,14 +53,14 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="inline-flex items-center rounded-lg border border-[#E2DAD0] bg-[#F7F3EE] px-3 py-1.5 text-xs font-medium text-[#5C5248] transition-colors hover:bg-[#EEE9E1] hover:text-[#1A1410]"
+          className="inline-flex items-center rounded-lg border border-[#2A2A26] bg-[#10100E] px-3 py-1.5 text-xs font-medium text-[#8A8880] transition-colors hover:bg-[#23231F] hover:text-[#F5F4F0]"
         >
           {expanded ? "Hide attempts" : `Show ${attempts.length} attempts`}
         </button>
       </div>
 
       {expanded ? (
-        <div className="divide-y divide-[#E2DAD0]">
+        <div className="divide-y divide-[#2A2A26]">
           {attempts.map((attempt) => {
             const isOpen = expandedAttempt === attempt.id;
 
@@ -69,30 +69,30 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
                 <button
                   type="button"
                   onClick={() => toggleAttempt(attempt.id)}
-                  className="flex w-full items-center gap-3 py-3 px-5 text-left cursor-pointer hover:bg-[#F7F3EE] transition-colors"
+                  className="flex w-full items-center gap-3 py-3 px-5 text-left cursor-pointer hover:bg-[#10100E] transition-colors"
                 >
-                  <span className="font-mono text-xs bg-[#EEE9E1] px-2 py-0.5 rounded">
+                  <span className="font-mono text-xs bg-[#23231F] px-2 py-0.5 rounded">
                     #{attempt.attempt_index}
                   </span>
-                  <span className="font-mono text-xs text-[#5C5248]">
+                  <span className="font-mono text-xs text-[#8A8880]">
                     {attempt.tool_name}
                   </span>
                   <StatusBadge status={attempt.outcome ?? "pending"} />
                   {attempt.final_confidence !== null ? (
-                    <span className="font-mono text-sm font-semibold text-[#1A1410]">
+                    <span className="font-mono text-sm font-semibold text-[#F5F4F0]">
                       {Math.round(attempt.final_confidence * 100)}%
                     </span>
                   ) : null}
-                  <span className="text-xs text-[#9C948A]">
+                  <span className="text-xs text-[#6F6D66]">
                     {formatLatency(attempt.total_latency_ms)}
                   </span>
-                  <span className="text-xs font-mono text-[#9C948A]">
+                  <span className="text-xs font-mono text-[#6F6D66]">
                     ${attempt.estimated_cost_usd.toFixed(4)}
                   </span>
                   <span className="ml-auto">
                     <svg
                       aria-hidden="true"
-                      className={`h-4 w-4 text-[#9C948A] transition-transform ${
+                      className={`h-4 w-4 text-[#6F6D66] transition-transform ${
                         isOpen ? "rotate-180" : ""
                       }`}
                       fill="none"
@@ -111,18 +111,18 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
 
                 {isOpen ? (
                   <div className="px-5 pb-4">
-                    <div className="rounded-xl bg-[#F7F3EE] px-4 py-4">
+                    <div className="rounded-xl bg-[#10100E] px-4 py-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-[#EEE9E1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#5C5248]">
+                        <span className="rounded-full bg-[#23231F] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#8A8880]">
                           {formatMethodLabel(attempt.verification_method)}
                         </span>
                       </div>
 
                       <div className="mt-3">
-                        <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+                        <p className="text-[10px] uppercase tracking-widest text-[#6F6D66]">
                           Execution Steps
                         </p>
-                        <ol className="mt-2 list-decimal pl-4 text-xs text-[#5C5248] space-y-1">
+                        <ol className="mt-2 list-decimal pl-4 text-xs text-[#8A8880] space-y-1">
                           {attempt.execution_steps.length > 0 ? (
                             attempt.execution_steps.map((step, index) => (
                               <li key={`${attempt.id}-step-${index}`}>
@@ -136,10 +136,10 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
                       </div>
 
                       <div className="mt-3">
-                        <p className="text-[10px] uppercase tracking-widest text-[#9C948A]">
+                        <p className="text-[10px] uppercase tracking-widest text-[#6F6D66]">
                           Tool Calls
                         </p>
-                        <pre className="mt-2 max-h-32 overflow-auto rounded-xl bg-[#EEE9E1] p-3 font-mono text-[11px] text-[#5C5248]">
+                        <pre className="mt-2 max-h-32 overflow-auto rounded-xl bg-[#23231F] p-3 font-mono text-[11px] text-[#8A8880]">
                           {JSON.stringify(attempt.tool_calls, null, 2)}
                         </pre>
                       </div>
@@ -160,3 +160,4 @@ export default function AttemptsSection({ attempts }: AttemptsSectionProps) {
     </section>
   );
 }
+

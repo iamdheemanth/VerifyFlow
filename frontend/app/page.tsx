@@ -345,8 +345,8 @@ function ProductMockup() {
 const navLinks = [
   { label: 'How It Works', href: '#how-it-works' },
   { label: 'Features', href: '#features' },
-  { label: 'Demo', href: '#demo' },
   { label: 'Use Cases', href: '#use-cases' },
+  { label: 'Pricing', href: '#pricing' },
 ]
 
 const steps = [
@@ -397,6 +397,24 @@ const features = [
     title: 'Real-time Streaming',
     body: 'Watch task execution live via SSE. Status updates pushed to the dashboard as they happen.',
     icon: <ZapIcon />,
+  },
+]
+
+const useCases = [
+  {
+    title: 'Browser Workflow Verification',
+    body: 'Confirm that an agent actually clicked, navigated, and changed the expected UI state before you trust the run outcome.',
+    tag: 'web agents',
+  },
+  {
+    title: 'Repository Change Auditing',
+    body: 'Verify file edits, policy changes, and GitHub actions with evidence-backed checks instead of trusting self-reported success.',
+    tag: 'engineering',
+  },
+  {
+    title: 'Human-in-the-Loop Operations',
+    body: 'Route uncertain outcomes to reviewers with screenshots, logs, and ledger history so escalations are fast and accountable.',
+    tag: 'ops teams',
   },
 ]
 
@@ -552,7 +570,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div id="use-cases" className="scroll-mt-28" />
       <section id="features" className="scroll-mt-28 border-t border-[#2A2A26] px-6 py-24 sm:py-28">
         <div className="mx-auto max-w-6xl">
           <p className="text-center font-mono text-xs uppercase tracking-[0.22em] text-[#C8A882]">
@@ -579,6 +596,89 @@ export default function HomePage() {
                 <p className="text-[15px] leading-7 text-[#9A988F]">{feature.body}</p>
               </article>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="use-cases"
+        className="scroll-mt-28 border-t border-[#2A2A26] bg-[linear-gradient(180deg,rgba(12,12,11,0.98),rgba(10,10,8,1))] px-6 py-24 sm:py-28"
+      >
+        <div className="mx-auto max-w-6xl">
+          <p className="text-center font-mono text-xs uppercase tracking-[0.22em] text-[#C8A882]">
+            Use Cases
+          </p>
+          <h2 className="mt-4 text-center text-4xl font-semibold tracking-tight text-[#F5F4F0] sm:text-5xl">
+            Where verification becomes mission-critical.
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-center text-base leading-7 text-[#9A988F] sm:text-lg">
+            VerifyFlow fits anywhere agent output needs proof, not just confidence. Use it to enforce trust across execution-heavy workflows.
+          </p>
+
+          <div className="mt-16 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="grid gap-5 md:grid-cols-3 lg:grid-cols-1">
+              {useCases.map((useCase) => (
+                <article
+                  key={useCase.title}
+                  className="rounded-[24px] border border-[#2E2E29] bg-[linear-gradient(180deg,rgba(24,24,22,0.98),rgba(18,18,17,0.98))] p-6 shadow-[0_24px_80px_-56px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.02)_inset]"
+                >
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#C8A882]">
+                    {useCase.tag}
+                  </p>
+                  <h3 className="mt-4 text-xl font-semibold tracking-tight text-[#F5F4F0]">
+                    {useCase.title}
+                  </h3>
+                  <p className="mt-3 text-[15px] leading-7 text-[#9A988F]">{useCase.body}</p>
+                </article>
+              ))}
+            </div>
+
+            <div className="rounded-[28px] border border-[#2A2A26] bg-[linear-gradient(180deg,rgba(20,20,18,0.96),rgba(14,14,13,0.98))] p-6 shadow-[0_30px_90px_-60px_rgba(0,0,0,0.9)] sm:p-7">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#C8A882]">
+                Outcome
+              </p>
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[#F5F4F0]">
+                Fewer blind spots. More defensible automation.
+              </h3>
+              <p className="mt-4 text-[15px] leading-7 text-[#9A988F]">
+                Instead of asking whether an agent finished, teams can ask whether the result is provably correct, safely retryable, or ready for escalation.
+              </p>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-[#2A2A26] bg-[#10100E] p-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8A8880]">
+                    trusted
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-[#F5F4F0]">
+                    Evidence-backed approvals
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#2A2A26] bg-[#10100E] p-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8A8880]">
+                    controlled
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-[#F5F4F0]">
+                    Safer retries and escalations
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#2A2A26] bg-[#10100E] p-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8A8880]">
+                    auditable
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-[#F5F4F0]">
+                    Ledger history for every claim
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#2A2A26] bg-[#10100E] p-4">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8A8880]">
+                    measurable
+                  </p>
+                  <p className="mt-2 text-sm font-medium text-[#F5F4F0]">
+                    Reliability you can benchmark
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

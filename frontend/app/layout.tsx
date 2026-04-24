@@ -22,11 +22,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-[#F7F3EE] text-[#1A1410] font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} bg-[#0A0A08] text-[#F5F4F0] font-sans antialiased`}
       >
         <AuthProvider>
           <SidebarShell />
-          <main className="md:ml-56 min-h-screen">
+          <main className="min-h-screen bg-[#0A0A08]">
             <div className="page-enter">{children}</div>
           </main>
         </AuthProvider>

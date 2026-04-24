@@ -33,9 +33,9 @@ export default function RunForm() {
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+    <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
       <label>
-        <span className="block text-[10px] uppercase tracking-widest text-[#9C8C80] mb-1.5">
+        <span className="mb-1.5 block text-[10px] uppercase tracking-widest text-[#8A8880]">
           Goal
         </span>
         <textarea
@@ -44,12 +44,12 @@ export default function RunForm() {
           rows={3}
           required
           placeholder="Describe what the AI agent should accomplish…"
-          className="w-full bg-[#2D2520] border border-[#3D3028] rounded-xl px-4 py-3 text-white text-sm placeholder-[#7A6E68] focus:outline-none focus:border-[#6B5B4E] resize-none"
+          className="w-full resize-none rounded-2xl border border-[#2A2A26] bg-[#10100E] px-4 py-3 text-sm text-[#F5F4F0] placeholder-[#6F6D66] outline-none transition-colors hover:border-[#3A3A34] focus:border-[#C8A882] focus:ring-2 focus:ring-[#C8A882]/20"
         />
       </label>
 
       <label>
-        <span className="block text-[10px] uppercase tracking-widest text-[#9C8C80] mb-1.5">
+        <span className="mb-1.5 block text-[10px] uppercase tracking-widest text-[#8A8880]">
           Acceptance Criteria (Optional)
         </span>
         <textarea
@@ -57,15 +57,15 @@ export default function RunForm() {
           onChange={(event) => setAcceptanceCriteria(event.target.value)}
           rows={2}
           placeholder="How should success be judged, if you want to specify it?"
-          className="w-full bg-[#2D2520] border border-[#3D3028] rounded-xl px-4 py-3 text-white text-sm placeholder-[#7A6E68] focus:outline-none focus:border-[#6B5B4E] resize-none"
+          className="w-full resize-none rounded-2xl border border-[#2A2A26] bg-[#10100E] px-4 py-3 text-sm text-[#F5F4F0] placeholder-[#6F6D66] outline-none transition-colors hover:border-[#3A3A34] focus:border-[#C8A882] focus:ring-2 focus:ring-[#C8A882]/20"
         />
       </label>
 
-      <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
           type="submit"
           disabled={isLoading || goal.trim().length === 0}
-          className="w-full bg-[#C8A882] hover:bg-[#D4B592] text-[#1A1410] font-semibold rounded-xl py-3 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center justify-center rounded-xl bg-[#C8A882] px-6 py-3 text-sm font-semibold text-[#0A0A08] transition-colors hover:bg-[#D4B592] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? (
             <span className="inline-flex items-center gap-2">
@@ -96,7 +96,7 @@ export default function RunForm() {
           )}
         </button>
 
-        {error ? <p className="text-[#F87171] text-xs mt-2">{error}</p> : null}
+        {error ? <p className="text-xs text-[#F87171]">{error}</p> : null}
       </div>
     </form>
   );
