@@ -284,6 +284,8 @@ async def verify_node(state: VerifyFlowState) -> VerifyFlowState:
         return {**state, "error": "No current task or action claim available for verification."}
 
     task = await _load_task(db, current_task_data["id"])
+    run = await _load_run(db, state["run_id"])
+    run.status = "verifying"
     task.status = "claimed"
     await db.commit()
     logger.info(
@@ -344,6 +346,8 @@ async def judge_node(state: VerifyFlowState) -> VerifyFlowState:
         return {**state, "error": "No current task available for judging."}
 
     task = await _load_task(db, current_task["id"])
+    run = await _load_run(db, state["run_id"])
+    run.status = "verifying"
     task.status = "claimed"
     await db.commit()
     logger.info("Run %s routing task %s to judge", state["run_id"], current_task["id"])
@@ -475,6 +479,8 @@ async def escalate_node(state: VerifyFlowState) -> VerifyFlowState:
         return {**state, "error": "No current task available to escalate."}
 
     task = await _load_task(db, current_task["id"])
+    run = await _load_run(db, state["run_id"])
+    run.status = "needs_review"
     task.status = "escalated"
     await db.commit()
     logger.info("Run %s task %s escalated", state["run_id"], current_task["id"])
@@ -550,7 +556,10 @@ async def finish_node(state: VerifyFlowState) -> VerifyFlowState:
     run = await _load_run(db, state["run_id"])
     tasks = await _refresh_tasks(state)
     task_statuses = {task["status"] for task in tasks}
-    if not tasks or "escalated" in task_statuses or task_statuses - {"verified"}:
+    if "escalated" in task_statuses:
+        run.status = "needs_review"
+        logger.info("Run %s finished awaiting human review", state["run_id"])
+    elif not tasks or task_statuses - {"verified"}:
         run.status = "failed"
         logger.info(
             "Run %s finished in failed state because tasks were incomplete or missing: %s",

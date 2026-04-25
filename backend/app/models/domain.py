@@ -99,11 +99,13 @@ class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'planning', 'executing', 'completed', 'failed')",
+            "status IN ('pending', 'queued', 'planning', 'executing', 'verifying', 'completed', 'failed', 'needs_review')",
             name="ck_runs_status",
         ),
         CheckConstraint("kind IN ('standard', 'benchmark')", name="ck_runs_kind"),
         Index("ix_runs_status_created_at", "status", "created_at"),
+        Index("ix_runs_status_queued_at", "status", "queued_at"),
+        Index("ix_runs_lease_expires_at", "lease_expires_at"),
         Index("ix_runs_kind_created_at", "kind", "created_at"),
         Index("ix_runs_executor_config_id", "executor_config_id"),
         Index("ix_runs_judge_config_id", "judge_config_id"),
@@ -122,6 +124,13 @@ class Run(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
     latest_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     failure_record: Mapped[dict[str, Any] | None] = mapped_column(json_type, nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    execution_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_worker_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     executor_config_id: Mapped[UUID | None] = mapped_column(
         uuid_type,
         ForeignKey("model_prompt_configs.id"),

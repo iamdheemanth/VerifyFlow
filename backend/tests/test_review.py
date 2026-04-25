@@ -4,7 +4,6 @@ import os
 from uuid import uuid4
 
 import pytest
-from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -42,7 +41,7 @@ async def _seed_escalated_run(session: AsyncSession) -> tuple[Run, Task, Escalat
         owner_email="test@example.com",
         goal="Escalated review flow",
         acceptance_criteria="Reviewer decision updates state coherently",
-        status="failed",
+        status="needs_review",
     )
     task = Task(
         id=task_id,
@@ -137,7 +136,6 @@ async def test_send_back_resets_task_and_schedules_reprocessing():
     session, engine = await _make_session()
     try:
         run, task, escalation = await _seed_escalated_run(session)
-        background_tasks = BackgroundTasks()
 
         response = await review_module.submit_reviewer_decision(
             escalation_id=escalation.id,
@@ -147,7 +145,6 @@ async def test_send_back_resets_task_and_schedules_reprocessing():
                 reviewer_key="carol",
                 reviewer_display_name="Carol QA",
             ),
-            background_tasks=background_tasks,
             db=session,
             current_user={"sub": "test-user", "email": "test@example.com"},
         )
@@ -160,15 +157,13 @@ async def test_send_back_resets_task_and_schedules_reprocessing():
         assert task.status == "pending"
         assert task.retry_count == 0
         assert task.claimed_result is None
-        assert run.status == "pending"
+        assert run.status == "queued"
+        assert run.queued_at is not None
         assert response.reviewer_key == "carol"
         assert response.reviewer_display_name == "Carol QA"
         assert response.reprocess_requested is True
         assert response.task_status == "pending"
-        assert response.run_status == "pending"
-        assert len(background_tasks.tasks) == 1
-        assert background_tasks.tasks[0].func is review_module._rerun_run_in_background
-        assert background_tasks.tasks[0].args == (str(run.id),)
+        assert response.run_status == "queued"
     finally:
         await session.close()
         await engine.dispose()

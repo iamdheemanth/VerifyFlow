@@ -2,32 +2,21 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import logging
-
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import verify_token
-from app.db.session import AsyncSessionLocal, get_db
+from app.db.session import get_db
 from app.models.domain import Escalation, Run
-from app.orchestrator.graph import run_graph
 from app.routes.authorization import user_subject
 from app.routes._contracts import raise_api_error, to_escalation_schema, to_reviewer_decision_schema
 from app.schemas.run import EscalationSchema, ReviewerDecisionRequest, ReviewerDecisionSchema
-from app.services import reliability
+from app.services import reliability, run_queue
 
 router = APIRouter(prefix="/review", tags=["review"])
-logger = logging.getLogger(__name__)
 
-
-async def _rerun_run_in_background(run_id: str) -> None:
-    async with AsyncSessionLocal() as db:
-        try:
-            await run_graph(run_id, db)
-        except Exception:
-            logger.exception("Background review send-back rerun failed for run %s", run_id)
 
 @router.get("/queue", response_model=list[EscalationSchema])
 async def list_escalation_queue(
@@ -56,7 +45,6 @@ async def list_escalation_queue(
 async def submit_reviewer_decision(
     escalation_id: UUID,
     payload: ReviewerDecisionRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(verify_token),
 ) -> ReviewerDecisionSchema:
@@ -111,7 +99,8 @@ async def submit_reviewer_decision(
 
     reprocess_requested = payload.decision == "send_back"
     if reprocess_requested:
-        background_tasks.add_task(_rerun_run_in_background, str(escalation.run_id))
+        run = await run_queue.enqueue_run(db, escalation.run_id)
+        await db.refresh(task)
 
     return to_reviewer_decision_schema(
         decision,

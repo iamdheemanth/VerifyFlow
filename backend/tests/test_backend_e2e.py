@@ -25,7 +25,7 @@ from app.db.session import Base, get_db
 from app.main import app
 from app.models.domain import Task
 from app.orchestrator import graph as graph_module
-from app.routes import runs as runs_module
+from app.worker import run_worker
 
 
 def _sqlite_url() -> tuple[str, Path]:
@@ -104,7 +104,7 @@ def e2e_client(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(graph_module.registry, "needs_judge", lambda result: False)
     monkeypatch.setattr(graph_module.executor, "reset_browser_clients", AsyncMock())
-    monkeypatch.setattr(runs_module, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(run_worker, "AsyncSessionLocal", session_factory)
 
     with TestClient(app) as test_client:
         yield test_client
@@ -124,7 +124,11 @@ def test_create_run_executes_graph_and_persists_run_task_and_telemetry(e2e_clien
     )
 
     assert response.status_code == 201
-    run_id = response.json()["id"]
+    created_payload = response.json()
+    assert created_payload["status"] == "queued"
+    run_id = created_payload["id"]
+
+    assert asyncio.run(run_worker.process_next_run(worker_id="test-worker")) is True
 
     run_response = e2e_client.get(f"/api/runs/{run_id}")
     assert run_response.status_code == 200
@@ -182,7 +186,11 @@ def test_create_run_persists_catastrophic_failure_evidence_when_graph_crashes(e2
     )
 
     assert response.status_code == 201
-    run_id = response.json()["id"]
+    created_payload = response.json()
+    assert created_payload["status"] == "queued"
+    run_id = created_payload["id"]
+
+    assert asyncio.run(run_worker.process_next_run(worker_id="test-worker")) is True
 
     run_response = e2e_client.get(f"/api/runs/{run_id}")
     assert run_response.status_code == 200

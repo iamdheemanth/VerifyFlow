@@ -20,7 +20,9 @@ function getStatusTone(status: string): Tone {
       };
     case "executing":
     case "planning":
+    case "queued":
     case "running":
+    case "verifying":
       return {
         bg: "bg-[#C8A882]/10",
         text: "text-[#E8D5BF]",

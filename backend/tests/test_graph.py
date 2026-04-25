@@ -166,7 +166,7 @@ async def test_run_graph_stops_after_escalated_task(monkeypatch: pytest.MonkeyPa
         await session.refresh(tasks[0])
         await session.refresh(tasks[1])
 
-        assert run.status == "failed"
+        assert run.status == "needs_review"
         assert tasks[0].status == "escalated"
         assert tasks[1].status == "pending"
 
@@ -322,7 +322,7 @@ async def test_run_graph_escalates_unrecoverable_failure_without_retries(monkeyp
         attempts = (await session.execute(select(TaskAttempt).where(TaskAttempt.task_id == task.id))).scalars().all()
         escalations = (await session.execute(select(Escalation).where(Escalation.task_id == task.id))).scalars().all()
 
-        assert run.status == "failed"
+        assert run.status == "needs_review"
         assert task.status == "escalated"
         assert task.retry_count == 0
         assert execute_mock.await_count == 1
@@ -721,7 +721,7 @@ async def test_run_graph_escalates_planning_failure_without_execution_or_verific
         escalations = (await session.execute(select(Escalation).where(Escalation.run_id == run_id))).scalars().all()
         ledger_entries = (await session.execute(select(LedgerEntry).where(LedgerEntry.run_id == run_id))).scalars().all()
 
-        assert refreshed_run.status == "failed"
+        assert refreshed_run.status == "needs_review"
         assert refreshed_run.failure_record is not None
         assert refreshed_run.failure_record["category"] == "planning_failed"
         assert refreshed_run.failure_record["original_goal"] == run.goal

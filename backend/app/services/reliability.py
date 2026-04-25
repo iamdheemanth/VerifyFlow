@@ -636,7 +636,9 @@ async def _reconcile_run_status_after_review(db: AsyncSession, run: Run) -> Run:
         run.status = "pending"
     elif "executing" in task_statuses or "claimed" in task_statuses:
         run.status = "executing"
-    elif "failed" in task_statuses or "escalated" in task_statuses:
+    elif "escalated" in task_statuses:
+        run.status = "needs_review"
+    elif "failed" in task_statuses:
         run.status = "failed"
     else:
         run.status = "pending"

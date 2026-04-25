@@ -55,12 +55,23 @@ async def test_schema_exposes_expected_indexes_constraints_and_reviewer_identity
             inspected = await conn.run_sync(_inspect)
 
         assert "ix_runs_status_created_at" in inspected["runs_indexes"]
+        assert "ix_runs_status_queued_at" in inspected["runs_indexes"]
+        assert "ix_runs_lease_expires_at" in inspected["runs_indexes"]
         assert "ix_runs_kind_created_at" in inspected["runs_indexes"]
         assert "ix_runs_owner_subject_created_at" in inspected["runs_indexes"]
         assert "uq_tasks_run_id_index" in inspected["tasks_uniques"]
         assert "uq_task_attempts_task_id_attempt_index" in inspected["task_attempt_uniques"]
         assert "failure_record" in inspected["run_columns"]
         assert {"owner_subject", "owner_email"} <= inspected["run_columns"]
+        assert {
+            "queued_at",
+            "started_at",
+            "finished_at",
+            "lease_owner",
+            "lease_expires_at",
+            "execution_attempts",
+            "last_worker_error",
+        } <= inspected["run_columns"]
         assert {"reviewer_key", "reviewer_display_name", "reviewer_name"} <= inspected["reviewer_columns"]
         assert any(
             foreign_key["constrained_columns"] == ["run_id"]
@@ -85,8 +96,15 @@ def test_alembic_history_has_single_head_and_expected_revision_chain():
     revisions = [revision.revision for revision in script.walk_revisions(base="base", head="heads")]
 
     assert len(heads) == 1
-    assert heads[0] == "e7a1b0c9d2f4"
-    assert revisions == ["e7a1b0c9d2f4", "c4c2a6ee8d1e", "d3f532773223", "a7a25d8f0c31", "4e4263e2402a"]
+    assert heads[0] == "f2b9c8d1e0a3"
+    assert revisions == [
+        "f2b9c8d1e0a3",
+        "e7a1b0c9d2f4",
+        "c4c2a6ee8d1e",
+        "d3f532773223",
+        "a7a25d8f0c31",
+        "4e4263e2402a",
+    ]
 
 
 def test_alembic_upgrade_from_reliability_expansion_checkpoint_preserves_legacy_reviewer_data(monkeypatch: pytest.MonkeyPatch):
@@ -207,10 +225,11 @@ def test_alembic_upgrade_from_reliability_expansion_checkpoint_preserves_legacy_
         finally:
             engine.dispose()
 
-        assert alembic_revision == "e7a1b0c9d2f4"
+        assert alembic_revision == "f2b9c8d1e0a3"
         assert {"reviewer_name", "reviewer_display_name", "reviewer_key"} <= reviewer_columns
         assert "failure_record" in run_columns
         assert {"owner_subject", "owner_email"} <= run_columns
+        assert {"queued_at", "lease_owner", "lease_expires_at", "execution_attempts"} <= run_columns
         assert reviewer_row["reviewer_name"] == "Legacy Reviewer"
         assert reviewer_row["reviewer_display_name"] == "Legacy Reviewer"
         assert reviewer_row["reviewer_key"] is None

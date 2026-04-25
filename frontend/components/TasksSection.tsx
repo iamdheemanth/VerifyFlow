@@ -12,7 +12,7 @@ type TasksSectionProps = {
 };
 
 function isStreamingStatus(status: string) {
-  return status === "pending" || status === "planning" || status === "executing";
+  return status === "pending" || status === "queued" || status === "planning" || status === "executing" || status === "verifying";
 }
 
 function taskBorderClass(status: string) {

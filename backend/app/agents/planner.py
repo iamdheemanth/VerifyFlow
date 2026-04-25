@@ -409,7 +409,7 @@ async def _persist_planning_failure(
     run_result = await db.execute(select(Run).where(Run.id == run_id))
     run = run_result.scalar_one_or_none()
     if run is not None:
-        run.status = "failed"
+        run.status = "needs_review"
         run.failure_record = evidence
         run.updated_at = utcnow()
 

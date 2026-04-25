@@ -306,7 +306,7 @@ def test_run_endpoint_represents_planning_failure_state(client):
                 owner_email="test@example.com",
                 goal=failure_record["original_goal"],
                 acceptance_criteria=failure_record["acceptance_criteria"],
-                status="failed",
+                status="needs_review",
                 failure_record=failure_record,
             )
             task = Task(
@@ -339,7 +339,7 @@ def test_run_endpoint_represents_planning_failure_state(client):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "failed"
+    assert payload["status"] == "needs_review"
     assert payload["failure_record"]["category"] == "planning_failed"
     assert payload["failure_record"]["original_goal"] == "Book a flight to Mars using the travel desk."
     assert payload["tasks"][0]["status"] == "escalated"

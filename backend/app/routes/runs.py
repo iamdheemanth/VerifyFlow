@@ -6,7 +6,7 @@ import logging
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,15 +14,14 @@ from sqlalchemy.orm import selectinload
 
 from app.db.session import AsyncSessionLocal, get_db
 from app.core.auth import verify_token
+from app.models.domain import utcnow
 from app.models.domain import (
     BenchmarkCase,
     Escalation,
     LedgerEntry,
-    ModelPromptConfig,
     RunTelemetry,
     Run,
 )
-from app.orchestrator.graph import run_graph
 from app.routes.authorization import get_run_for_subject, get_run_for_user, user_email, user_subject
 from app.routes._contracts import (
     build_task_evidence,
@@ -71,19 +70,9 @@ def _asyncpg_dsn() -> str | None:
 async def _load_run_for_user_or_404(db: AsyncSession, run_id: UUID, current_user: dict) -> Run:
     return await get_run_for_user(db, run_id, current_user, options=RUN_LOAD_OPTIONS)
 
-
-async def _run_graph_in_background(run_id: str) -> None:
-    async with AsyncSessionLocal() as db:
-        try:
-            await run_graph(run_id, db)
-        except Exception:
-            logger.exception("Background graph execution failed for run %s", run_id)
-
-
 @router.post("", response_model=RunSummarySchema, status_code=status.HTTP_201_CREATED)
 async def create_run(
     payload: CreateRunRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(verify_token),
 ) -> RunSummarySchema:
@@ -109,7 +98,8 @@ async def create_run(
         owner_email=user_email(current_user),
         goal=payload.goal,
         acceptance_criteria=payload.acceptance_criteria,
-        status="pending",
+        status="queued",
+        queued_at=utcnow(),
         kind=kind,
         executor_config_id=payload.executor_config_id,
         judge_config_id=payload.judge_config_id,
@@ -119,7 +109,6 @@ async def create_run(
     db.add(run)
     await db.commit()
     await db.refresh(run)
-    background_tasks.add_task(_run_graph_in_background, str(run.id))
     return RunSummarySchema(
         id=run.id,
         goal=run.goal,
@@ -342,7 +331,7 @@ async def stream_run(
                                 }
                             ) + "\n\n"
 
-                    if run.status in {"completed", "failed"} and not run_complete_sent:
+                    if run.status in {"completed", "failed", "needs_review"} and not run_complete_sent:
                         run_complete_sent = True
                         yield "data: " + json.dumps(
                             {"type": "run_complete", "run_id": str(run.id), "status": run.status}

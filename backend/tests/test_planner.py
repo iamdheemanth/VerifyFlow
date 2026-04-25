@@ -228,7 +228,7 @@ async def test_planner_escalates_unsupported_plan_without_filesystem_placeholder
 
     assert planned_state["decision"] == "finish"
     assert planned_state["error"] == "Planner could not create an executable plan. Manual review is required."
-    assert persisted_run.status == "failed"
+    assert persisted_run.status == "needs_review"
     assert persisted_run.failure_record["category"] == "planning_failed"
     assert persisted_run.failure_record["original_goal"] == state["goal"]
     assert "travel.book_flight" in persisted_run.failure_record["planner_reason"]
