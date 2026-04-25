@@ -56,10 +56,11 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://vf:vf@localhost:5432/verifyflow_test
           LLM_BASE_URL: https://openrouter.ai/api/v1
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_KEY: ci-test-llm-api-key
           LLM_MODEL: anthropic/claude-sonnet-4-5
           LLM_JUDGE_MODEL: anthropic/claude-sonnet-4-5
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          NEXTAUTH_SECRET: ci-test-nextauth-secret-value-32-chars
+          GITHUB_TOKEN: ci-test-github-token
           GITHUB_OWNER: test
           MAX_RETRIES: "3"
           VERIFICATION_CONFIDENCE_THRESHOLD: "0.75"

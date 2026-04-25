@@ -38,6 +38,8 @@ async def _seed_escalated_run(session: AsyncSession) -> tuple[Run, Task, Escalat
     task_id = uuid4()
     run = Run(
         id=run_id,
+        owner_subject="test-user",
+        owner_email="test@example.com",
         goal="Escalated review flow",
         acceptance_criteria="Reviewer decision updates state coherently",
         status="failed",
@@ -147,6 +149,7 @@ async def test_send_back_resets_task_and_schedules_reprocessing():
             ),
             background_tasks=background_tasks,
             db=session,
+            current_user={"sub": "test-user", "email": "test@example.com"},
         )
 
         await session.refresh(run)

@@ -7,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth import verify_token
 from app.db.session import get_db
 from app.models.domain import ModelPromptConfig, Run
+from app.routes.authorization import user_subject
 from app.routes._contracts import build_configuration_drilldown, raise_api_error
 from app.schemas.run import (
     ConfigurationComparisonSchema,
@@ -24,7 +26,7 @@ async def _load_configurations(db: AsyncSession) -> list[ModelPromptConfig]:
     return result.scalars().all()
 
 
-async def _load_configuration_runs(db: AsyncSession) -> list[Run]:
+async def _load_configuration_runs(db: AsyncSession, owner_subject: str) -> list[Run]:
     result = await db.execute(
         select(Run).options(
             selectinload(Run.telemetry),
@@ -32,6 +34,7 @@ async def _load_configuration_runs(db: AsyncSession) -> list[Run]:
             selectinload(Run.judge_config),
             selectinload(Run.escalations),
         )
+        .where(Run.owner_subject == owner_subject)
     )
     return result.scalars().unique().all()
 
@@ -74,14 +77,21 @@ async def list_configurations(db: AsyncSession = Depends(get_db)) -> list[ModelP
 
 
 @router.get("/comparison", response_model=list[ConfigurationComparisonSchema])
-async def compare_configurations(db: AsyncSession = Depends(get_db)) -> list[ConfigurationComparisonSchema]:
-    return _build_comparisons(await _load_configurations(db), await _load_configuration_runs(db))
+async def compare_configurations(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[ConfigurationComparisonSchema]:
+    return _build_comparisons(await _load_configurations(db), await _load_configuration_runs(db, user_subject(current_user)))
 
 
 @router.get("/{config_id}/drilldown", response_model=ConfigurationDrilldownSchema)
-async def configuration_drilldown(config_id: UUID, db: AsyncSession = Depends(get_db)) -> ConfigurationDrilldownSchema:
+async def configuration_drilldown(
+    config_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> ConfigurationDrilldownSchema:
     configs = await _load_configurations(db)
-    runs = await _load_configuration_runs(db)
+    runs = await _load_configuration_runs(db, user_subject(current_user))
     comparison = next((item for item in _build_comparisons(configs, runs) if item.config_id == config_id), None)
     if comparison is None:
         raise_api_error(

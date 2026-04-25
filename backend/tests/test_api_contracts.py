@@ -71,6 +71,8 @@ async def _seed_contract_data(session: AsyncSession) -> dict[str, UUID]:
     )
     run = Run(
         id=uuid4(),
+        owner_subject="test-user",
+        owner_email="test@example.com",
         goal="Navigate to wikipedia and click English",
         acceptance_criteria="English main page is shown",
         status="failed",

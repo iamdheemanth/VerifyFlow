@@ -8,8 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth import verify_token
 from app.db.session import get_db
 from app.models.domain import BenchmarkSuite, Run
+from app.routes.authorization import user_subject
 from app.routes._contracts import build_benchmark_drilldown, raise_api_error
 from app.schemas.run import (
     BenchmarkCaseSchema,
@@ -21,7 +23,7 @@ from app.schemas.run import (
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
 
 
-async def _load_benchmark_runs(db: AsyncSession) -> list[Run]:
+async def _load_benchmark_runs(db: AsyncSession, owner_subject: str) -> list[Run]:
     result = await db.execute(
         select(Run).options(
             selectinload(Run.telemetry),
@@ -29,7 +31,7 @@ async def _load_benchmark_runs(db: AsyncSession) -> list[Run]:
             selectinload(Run.benchmark_case),
             selectinload(Run.escalations),
         )
-        .where(Run.kind == "benchmark")
+        .where(Run.kind == "benchmark", Run.owner_subject == owner_subject)
     )
     return result.scalars().unique().all()
 
@@ -103,13 +105,20 @@ async def list_benchmark_cases(db: AsyncSession = Depends(get_db)) -> list[Bench
 
 
 @router.get("/overview", response_model=list[BenchmarkOverviewSchema])
-async def benchmark_overview(db: AsyncSession = Depends(get_db)) -> list[BenchmarkOverviewSchema]:
-    return _build_overviews(await _load_benchmark_runs(db))
+async def benchmark_overview(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[BenchmarkOverviewSchema]:
+    return _build_overviews(await _load_benchmark_runs(db, user_subject(current_user)))
 
 
 @router.get("/suites/{suite_id}/drilldown", response_model=BenchmarkDrilldownSchema)
-async def benchmark_drilldown(suite_id: UUID, db: AsyncSession = Depends(get_db)) -> BenchmarkDrilldownSchema:
-    runs = await _load_benchmark_runs(db)
+async def benchmark_drilldown(
+    suite_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> BenchmarkDrilldownSchema:
+    runs = await _load_benchmark_runs(db, user_subject(current_user))
     relevant_runs = [run for run in runs if run.benchmark_suite_id == suite_id]
     if not relevant_runs:
         raise_api_error(

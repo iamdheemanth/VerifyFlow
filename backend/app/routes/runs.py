@@ -13,17 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import AsyncSessionLocal, get_db
+from app.core.auth import verify_token
 from app.models.domain import (
     BenchmarkCase,
-    BenchmarkSuite,
     Escalation,
     LedgerEntry,
     ModelPromptConfig,
     RunTelemetry,
-    Task,
     Run,
 )
 from app.orchestrator.graph import run_graph
+from app.routes.authorization import get_run_for_subject, get_run_for_user, user_email, user_subject
 from app.routes._contracts import (
     build_task_evidence,
     build_run_inspection,
@@ -43,6 +43,19 @@ from app.schemas.run import (
 router = APIRouter(prefix="/runs", tags=["runs"])
 logger = logging.getLogger(__name__)
 
+RUN_LOAD_OPTIONS = (
+    selectinload(Run.tasks),
+    selectinload(Run.telemetry),
+    selectinload(Run.task_attempts),
+    selectinload(Run.ledger_entries).selectinload(LedgerEntry.task),
+    selectinload(Run.escalations).selectinload(Escalation.reviewer_decisions),
+    selectinload(Run.reviewer_decisions),
+    selectinload(Run.executor_config),
+    selectinload(Run.judge_config),
+    selectinload(Run.benchmark_suite),
+    selectinload(Run.benchmark_case),
+)
+
 
 def _asyncpg_dsn() -> str | None:
     from app.db.session import _resolve_database_url
@@ -55,27 +68,8 @@ def _asyncpg_dsn() -> str | None:
     return None
 
 
-async def _load_run_or_404(db: AsyncSession, run_id: UUID) -> Run:
-    result = await db.execute(
-        select(Run)
-        .options(
-            selectinload(Run.tasks),
-            selectinload(Run.telemetry),
-            selectinload(Run.task_attempts),
-            selectinload(Run.ledger_entries).selectinload(LedgerEntry.task),
-            selectinload(Run.escalations).selectinload(Escalation.reviewer_decisions),
-            selectinload(Run.reviewer_decisions),
-            selectinload(Run.executor_config),
-            selectinload(Run.judge_config),
-            selectinload(Run.benchmark_suite),
-            selectinload(Run.benchmark_case),
-        )
-        .where(Run.id == run_id)
-    )
-    run = result.scalar_one_or_none()
-    if run is None:
-        raise_api_error(status.HTTP_404_NOT_FOUND, "run_not_found", "Run not found", details={"run_id": str(run_id)})
-    return run
+async def _load_run_for_user_or_404(db: AsyncSession, run_id: UUID, current_user: dict) -> Run:
+    return await get_run_for_user(db, run_id, current_user, options=RUN_LOAD_OPTIONS)
 
 
 async def _run_graph_in_background(run_id: str) -> None:
@@ -91,6 +85,7 @@ async def create_run(
     payload: CreateRunRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
 ) -> RunSummarySchema:
     kind = "benchmark" if payload.benchmark_case_id else "standard"
     benchmark_case = None
@@ -110,6 +105,8 @@ async def create_run(
         benchmark_suite_id = benchmark_case.suite_id
 
     run = Run(
+        owner_subject=user_subject(current_user),
+        owner_email=user_email(current_user),
         goal=payload.goal,
         acceptance_criteria=payload.acceptance_criteria,
         status="pending",
@@ -135,14 +132,32 @@ async def create_run(
 
 
 @router.get("/overview", response_model=ReliabilityOverviewSchema)
-async def get_reliability_overview(db: AsyncSession = Depends(get_db)) -> ReliabilityOverviewSchema:
-    run_count = (await db.execute(select(func.count(Run.id)))).scalar_one()
-    completed_runs = (await db.execute(select(func.count(Run.id)).where(Run.status == "completed"))).scalar_one()
-    failed_runs = (await db.execute(select(func.count(Run.id)).where(Run.status == "failed"))).scalar_one()
-    escalated_runs = (
-        await db.execute(select(func.count(func.distinct(Escalation.run_id))))
+async def get_reliability_overview(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> ReliabilityOverviewSchema:
+    owner = user_subject(current_user)
+    run_count = (await db.execute(select(func.count(Run.id)).where(Run.owner_subject == owner))).scalar_one()
+    completed_runs = (
+        await db.execute(select(func.count(Run.id)).where(Run.owner_subject == owner, Run.status == "completed"))
     ).scalar_one()
-    telemetry_rows = (await db.execute(select(RunTelemetry))).scalars().all()
+    failed_runs = (
+        await db.execute(select(func.count(Run.id)).where(Run.owner_subject == owner, Run.status == "failed"))
+    ).scalar_one()
+    escalated_runs = (
+        await db.execute(
+            select(func.count(func.distinct(Escalation.run_id)))
+            .join(Run, Escalation.run_id == Run.id)
+            .where(Run.owner_subject == owner)
+        )
+    ).scalar_one()
+    telemetry_rows = (
+        await db.execute(
+            select(RunTelemetry)
+            .join(Run, RunTelemetry.run_id == Run.id)
+            .where(Run.owner_subject == owner)
+        )
+    ).scalars().all()
     average_confidence = (
         sum(item.average_confidence for item in telemetry_rows) / len(telemetry_rows)
         if telemetry_rows
@@ -162,18 +177,26 @@ async def get_reliability_overview(db: AsyncSession = Depends(get_db)) -> Reliab
 
 
 @router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> Response:
-    run = await _load_run_or_404(db, run_id)
+async def delete_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> Response:
+    run = await _load_run_for_user_or_404(db, run_id, current_user)
     await db.delete(run)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("", response_model=list[RunSummarySchema])
-async def list_runs(db: AsyncSession = Depends(get_db)) -> list[RunSummarySchema]:
+async def list_runs(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[RunSummarySchema]:
     result = await db.execute(
         select(Run)
         .options(selectinload(Run.tasks))
+        .where(Run.owner_subject == user_subject(current_user))
         .order_by(Run.created_at.desc())
     )
     runs = result.scalars().unique().all()
@@ -181,20 +204,33 @@ async def list_runs(db: AsyncSession = Depends(get_db)) -> list[RunSummarySchema
 
 
 @router.get("/{run_id}", response_model=RunSchema)
-async def get_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunSchema:
-    run = await _load_run_or_404(db, run_id)
+async def get_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> RunSchema:
+    run = await _load_run_for_user_or_404(db, run_id, current_user)
     return to_run_schema(run)
 
 
 @router.get("/{run_id}/inspection", response_model=RunInspectionSchema)
-async def inspect_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> RunInspectionSchema:
-    run = await _load_run_or_404(db, run_id)
+async def inspect_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> RunInspectionSchema:
+    run = await _load_run_for_user_or_404(db, run_id, current_user)
     return build_run_inspection(run)
 
 
 @router.get("/{run_id}/tasks/{task_id}/evidence", response_model=TaskEvidenceSchema)
-async def get_task_evidence(run_id: UUID, task_id: UUID, db: AsyncSession = Depends(get_db)) -> TaskEvidenceSchema:
-    run = await _load_run_or_404(db, run_id)
+async def get_task_evidence(
+    run_id: UUID,
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> TaskEvidenceSchema:
+    run = await _load_run_for_user_or_404(db, run_id, current_user)
     task = next((item for item in run.tasks if item.id == task_id), None)
     if task is None:
         raise_api_error(
@@ -207,8 +243,13 @@ async def get_task_evidence(run_id: UUID, task_id: UUID, db: AsyncSession = Depe
 
 
 @router.delete("/{run_id}/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(run_id: UUID, task_id: UUID, db: AsyncSession = Depends(get_db)) -> Response:
-    run = await _load_run_or_404(db, run_id)
+async def delete_task(
+    run_id: UUID,
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> Response:
+    run = await _load_run_for_user_or_404(db, run_id, current_user)
     task = next((task for task in run.tasks if task.id == task_id), None)
     if task is None:
         raise_api_error(
@@ -223,7 +264,15 @@ async def delete_task(run_id: UUID, task_id: UUID, db: AsyncSession = Depends(ge
 
 
 @router.get("/{run_id}/stream")
-async def stream_run(run_id: UUID, request: Request) -> StreamingResponse:
+async def stream_run(
+    run_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> StreamingResponse:
+    owner = user_subject(current_user)
+    await get_run_for_subject(db, run_id, owner, options=(selectinload(Run.tasks),))
+
     async def event_generator():
         queue: asyncio.Queue[dict] = asyncio.Queue()
         listen_task: asyncio.Task | None = None
@@ -265,7 +314,12 @@ async def stream_run(run_id: UUID, request: Request) -> StreamingResponse:
 
                 async with AsyncSessionLocal() as db:
                     try:
-                        run = await _load_run_or_404(db, run_id)
+                        run = await get_run_for_subject(
+                            db,
+                            run_id,
+                            owner,
+                            options=(selectinload(Run.tasks),),
+                        )
                     except HTTPException:
                         yield "data: " + json.dumps({"type": "error", "message": "Run not found"}) + "\n\n"
                         break

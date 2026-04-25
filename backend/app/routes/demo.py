@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import verify_token
 from app.db.session import get_db
 from app.models.domain import (
     BenchmarkCase,
@@ -16,13 +17,18 @@ from app.models.domain import (
     Task,
     TaskAttempt,
 )
+from app.routes.authorization import user_email, user_subject
 
 router = APIRouter(prefix="/demo", tags=["demo"])
 
 
 @router.post("/seed")
-async def seed_demo_data(db: AsyncSession = Depends(get_db)) -> dict[str, int]:
-    existing_runs = (await db.execute(select(Run.id))).scalars().all()
+async def seed_demo_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> dict[str, int]:
+    owner = user_subject(current_user)
+    existing_runs = (await db.execute(select(Run.id).where(Run.owner_subject == owner))).scalars().all()
     if existing_runs:
         return {"created_runs": 0}
 
@@ -42,20 +48,38 @@ async def seed_demo_data(db: AsyncSession = Depends(get_db)) -> dict[str, int]:
         prompt_version="v1",
         config_metadata={"stance": "skeptical"},
     )
-    suite = BenchmarkSuite(
-        name="Reliability Smoke Suite",
-        description="Small benchmark suite for replaying representative verification flows.",
-    )
-    case = BenchmarkCase(
-        suite=suite,
-        name="Google Search Result Verification",
-        goal="Navigate to https://www.google.com/search?q=OpenAI and verify that the results page contains the text OpenAI",
-        acceptance_criteria="The browser opens the Google search results page for OpenAI and the visible page text or page title contains OpenAI.",
-        expected_outcome="completed",
-        label_data={"expected_verified": True},
-    )
+    suite = (
+        await db.execute(
+            select(BenchmarkSuite).where(BenchmarkSuite.name == "Reliability Smoke Suite")
+        )
+    ).scalar_one_or_none()
+    if suite is None:
+        suite = BenchmarkSuite(
+            name="Reliability Smoke Suite",
+            description="Small benchmark suite for replaying representative verification flows.",
+        )
+
+    case = (
+        await db.execute(
+            select(BenchmarkCase).where(
+                BenchmarkCase.suite_id == suite.id,
+                BenchmarkCase.name == "Google Search Result Verification",
+            )
+        )
+    ).scalar_one_or_none()
+    if case is None:
+        case = BenchmarkCase(
+            suite=suite,
+            name="Google Search Result Verification",
+            goal="Navigate to https://www.google.com/search?q=OpenAI and verify that the results page contains the text OpenAI",
+            acceptance_criteria="The browser opens the Google search results page for OpenAI and the visible page text or page title contains OpenAI.",
+            expected_outcome="completed",
+            label_data={"expected_verified": True},
+        )
 
     completed_run = Run(
+        owner_subject=owner,
+        owner_email=user_email(current_user),
         goal=case.goal,
         acceptance_criteria=case.acceptance_criteria,
         status="completed",
@@ -121,6 +145,8 @@ async def seed_demo_data(db: AsyncSession = Depends(get_db)) -> dict[str, int]:
     )
 
     escalated_run = Run(
+        owner_subject=owner,
+        owner_email=user_email(current_user),
         goal="Navigate to https://www.wikipedia.org, click the English language link, and verify that the destination page contains The Free Encyclopedia",
         acceptance_criteria="The browser opens https://www.wikipedia.org, clicks the English language link, and the destination page contains The Free Encyclopedia in the visible page text or title.",
         status="failed",

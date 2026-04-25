@@ -4,14 +4,16 @@ from uuid import UUID
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth import verify_token
 from app.db.session import AsyncSessionLocal, get_db
-from app.models.domain import Escalation
+from app.models.domain import Escalation, Run
 from app.orchestrator.graph import run_graph
+from app.routes.authorization import user_subject
 from app.routes._contracts import raise_api_error, to_escalation_schema, to_reviewer_decision_schema
 from app.schemas.run import EscalationSchema, ReviewerDecisionRequest, ReviewerDecisionSchema
 from app.services import reliability
@@ -28,11 +30,17 @@ async def _rerun_run_in_background(run_id: str) -> None:
             logger.exception("Background review send-back rerun failed for run %s", run_id)
 
 @router.get("/queue", response_model=list[EscalationSchema])
-async def list_escalation_queue(db: AsyncSession = Depends(get_db)) -> list[EscalationSchema]:
+async def list_escalation_queue(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[EscalationSchema]:
+    owner = user_subject(current_user)
     result = await db.execute(
         select(Escalation)
         .options(selectinload(Escalation.reviewer_decisions))
+        .join(Run, Escalation.run_id == Run.id)
         .where(Escalation.status == "pending_review")
+        .where(Run.owner_subject == owner)
         .order_by(Escalation.created_at.desc())
     )
     escalations = result.scalars().unique().all()
@@ -50,6 +58,7 @@ async def submit_reviewer_decision(
     payload: ReviewerDecisionRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
 ) -> ReviewerDecisionSchema:
     if payload.decision not in {"approve", "reject", "send_back"}:
         raise_api_error(
@@ -64,7 +73,9 @@ async def submit_reviewer_decision(
     result = await db.execute(
         select(Escalation)
         .options(selectinload(Escalation.reviewer_decisions))
+        .join(Run, Escalation.run_id == Run.id)
         .where(Escalation.id == escalation_id)
+        .where(Run.owner_subject == user_subject(current_user))
     )
     escalation = result.scalar_one_or_none()
     if escalation is None:

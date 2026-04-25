@@ -32,6 +32,11 @@ jobs:
         working-directory: frontend
 
       - name: Type check
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api
+          NEXTAUTH_SECRET: ci-test-nextauth-secret-value-32-chars
+          GOOGLE_CLIENT_ID: ci-test-google-client-id
+          GOOGLE_CLIENT_SECRET: ci-test-google-client-secret
         run: npx tsc --noEmit
         working-directory: frontend
 
@@ -42,5 +47,8 @@ jobs:
       - name: Build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000/api
+          NEXTAUTH_SECRET: ci-test-nextauth-secret-value-32-chars
+          GOOGLE_CLIENT_ID: ci-test-google-client-id
+          GOOGLE_CLIENT_SECRET: ci-test-google-client-secret
         run: npm run build
         working-directory: frontend

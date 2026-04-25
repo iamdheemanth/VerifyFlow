@@ -7,8 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth import verify_token
 from app.db.session import get_db
 from app.models.domain import LedgerEntry, Task
+from app.routes.authorization import get_run_for_user
 from app.routes._contracts import to_ledger_entry_schema
 from app.schemas.run import LedgerEntrySchema
 
@@ -16,7 +18,12 @@ router = APIRouter(prefix="/ledger", tags=["ledger"])
 
 
 @router.get("/{run_id}", response_model=list[LedgerEntrySchema])
-async def get_ledger(run_id: UUID, db: AsyncSession = Depends(get_db)) -> list[LedgerEntrySchema]:
+async def get_ledger(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[LedgerEntrySchema]:
+    await get_run_for_user(db, run_id, current_user)
     result = await db.execute(
         select(LedgerEntry)
         .options(selectinload(LedgerEntry.task))

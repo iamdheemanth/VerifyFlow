@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
+
+from app.db.base import Base
 
 
 def _resolve_database_url() -> str:
@@ -29,10 +30,6 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
     expire_on_commit=False,
 )
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

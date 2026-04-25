@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.session import Base
+from app.db.base import Base
 
 
 def utcnow() -> datetime:
@@ -109,9 +109,13 @@ class Run(Base):
         Index("ix_runs_judge_config_id", "judge_config_id"),
         Index("ix_runs_benchmark_suite_id", "benchmark_suite_id"),
         Index("ix_runs_benchmark_case_id", "benchmark_case_id"),
+        Index("ix_runs_owner_subject_created_at", "owner_subject", "created_at"),
+        Index("ix_runs_owner_subject_status_created_at", "owner_subject", "status", "created_at"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    owner_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")

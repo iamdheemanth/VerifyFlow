@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -8,11 +9,30 @@ from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.db.session import _resolve_database_url, _sync_database_url
-from app.models.domain import Base
+from app.db.base import Base
+from app.models import domain as _domain  # noqa: F401
 
 config = context.config
 load_dotenv()
+
+
+def _resolve_database_url() -> str:
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required to run Alembic migrations.")
+    if "://" not in database_url:
+        raise RuntimeError("DATABASE_URL must include a database URL scheme.")
+    return database_url
+
+
+def _sync_database_url(url: str) -> str:
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    if url.startswith("sqlite+aiosqlite://"):
+        return url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+    return url
+
+
 database_url = _resolve_database_url()
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 

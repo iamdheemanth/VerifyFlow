@@ -40,10 +40,15 @@ function requireEnv(name, { minLength, url } = {}) {
   return value
 }
 
-requireEnv('NEXT_PUBLIC_API_URL', { url: true })
-requireEnv('NEXTAUTH_SECRET', { minLength: 32 })
-requireEnv('GOOGLE_CLIENT_ID')
-requireEnv('GOOGLE_CLIENT_SECRET')
+const isLintCommand =
+  process.env.npm_lifecycle_event === 'lint' || process.argv.includes('lint')
+
+if (!isLintCommand) {
+  requireEnv('NEXT_PUBLIC_API_URL', { url: true })
+  requireEnv('NEXTAUTH_SECRET', { minLength: 32 })
+  requireEnv('GOOGLE_CLIENT_ID')
+  requireEnv('GOOGLE_CLIENT_SECRET')
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {};
