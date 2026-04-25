@@ -261,3 +261,24 @@ def test_stream_endpoint_enforces_run_owner(authz_client):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "run_not_found"
+
+
+def test_stream_endpoint_rejects_unauthenticated_request(authz_client):
+    test_client, session_factory, _set_user = authz_client
+
+    async def seed():
+        async with session_factory() as session:
+            return await _seed_run_bundle(
+                session,
+                owner_subject="user-a",
+                owner_email="user-a@example.com",
+                status="completed",
+            )
+
+    ids = asyncio.run(seed())
+    app.dependency_overrides.pop(verify_token, None)
+
+    response = test_client.get(f"/api/runs/{ids['run_id']}/stream")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"

@@ -22,6 +22,8 @@ const BASE_URL = publicEnv.apiUrl;
 let _cachedToken: string | null = null;
 let _tokenFetchedAt: number = 0;
 const TOKEN_TTL_MS = 5 * 60 * 1000; // re-fetch every 5 minutes
+const STREAM_RECONNECT_DELAY_MS = 1000;
+const STREAM_MAX_RECONNECT_ATTEMPTS = 3;
 
 async function getApiToken(): Promise<string | null> {
   const now = Date.now();
@@ -44,6 +46,72 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
   const token = await getApiToken();
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
+}
+
+function parseStreamEvent(block: string): RunStreamEvent | null {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n")
+    .trim();
+
+  if (!data) {
+    return null;
+  }
+
+  return JSON.parse(data) as RunStreamEvent;
+}
+
+async function readRunStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: RunStreamEvent) => void,
+  signal: AbortSignal
+): Promise<boolean> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let sawTerminalEvent = false;
+
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        try {
+          const event = parseStreamEvent(part);
+          if (event) {
+            if (event.type === "run_complete") {
+              sawTerminalEvent = true;
+            }
+            onEvent(event);
+          }
+        } catch {
+          onEvent({ type: "error", message: "Failed to parse stream event." });
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+    const trailingEvent = parseStreamEvent(buffer);
+    if (trailingEvent) {
+      if (trailingEvent.type === "run_complete") {
+        sawTerminalEvent = true;
+      }
+      onEvent(trailingEvent);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return sawTerminalEvent;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -154,22 +222,99 @@ export const api = {
   },
 
   streamRun(run_id: string, onEvent: (event: RunStreamEvent) => void): () => void {
-    const source = new EventSource(`${BASE_URL}/runs/${run_id}/stream`);
+    let closed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let activeController: AbortController | null = null;
 
-    source.onmessage = (event) => {
+    const cleanup = () => {
+      closed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      activeController?.abort();
+      activeController = null;
+    };
+
+    const scheduleReconnect = (attempt: number, message: string) => {
+      if (closed) {
+        return;
+      }
+
+      if (attempt >= STREAM_MAX_RECONNECT_ATTEMPTS) {
+        onEvent({ type: "error", message });
+        return;
+      }
+
+      onEvent({ type: "error", message: `${message} Reconnecting...` });
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        void connect(attempt + 1);
+      }, STREAM_RECONNECT_DELAY_MS);
+    };
+
+    const connect = async (attempt: number) => {
+      const token = await getApiToken();
+      if (!token) {
+        onEvent({ type: "error", message: "Authentication is required to stream this run." });
+        return;
+      }
+
+      const controller = new AbortController();
+      activeController = controller;
+
       try {
-        onEvent(JSON.parse(event.data) as RunStreamEvent);
-      } catch {
-        onEvent({ type: "error", message: "Failed to parse stream event." });
+        const response = await fetch(`${BASE_URL}/runs/${encodeURIComponent(run_id)}/stream`, {
+          headers: {
+            Accept: "text/event-stream",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          _cachedToken = null;
+          scheduleReconnect(attempt, "Authentication expired while opening the run stream.");
+          return;
+        }
+
+        if (response.status === 403) {
+          onEvent({ type: "error", message: "Authentication failed while opening the run stream." });
+          return;
+        }
+
+        if (response.status === 404) {
+          onEvent({ type: "error", message: "Run stream not found or no longer available." });
+          return;
+        }
+
+        if (!response.ok || !response.body) {
+          throw new Error(`Stream request failed: ${response.status}`);
+        }
+
+        const completed = await readRunStream(response.body, onEvent, controller.signal);
+        if (!closed && !completed) {
+          scheduleReconnect(attempt, "Run stream disconnected.");
+        }
+      } catch (streamError) {
+        if (closed || controller.signal.aborted) {
+          return;
+        }
+
+        const message =
+          streamError instanceof Error && streamError.message
+            ? streamError.message
+            : "Stream connection error.";
+        scheduleReconnect(attempt, message);
+      } finally {
+        if (activeController === controller) {
+          activeController = null;
+        }
       }
     };
 
-    source.onerror = () => {
-      onEvent({ type: "error", message: "Stream connection error." });
-    };
-
-    return () => {
-      source.close();
-    };
+    void connect(0);
+    return cleanup;
   },
 };

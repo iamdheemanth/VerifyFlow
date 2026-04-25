@@ -41,6 +41,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
     Object.fromEntries(run.tasks.map((task) => [task.id, task.status]))
   );
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+  const [streamError, setStreamError] = useState<string | null>(null);
 
   useEffect(() => {
     setTaskStatuses(Object.fromEntries(run.tasks.map((task) => [task.id, task.status])));
@@ -53,6 +54,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
 
     const cleanup = api.streamRun(run.id, (event) => {
       if (event.type === "task_update") {
+        setStreamError(null);
         setTaskStatuses((current) => ({
           ...current,
           [event.task_id]: event.status,
@@ -61,6 +63,7 @@ export default function TasksSection({ run }: TasksSectionProps) {
       }
 
       if (event.type === "escalation") {
+        setStreamError(null);
         setTaskStatuses((current) => ({
           ...current,
           [event.task_id]: "escalated",
@@ -69,7 +72,13 @@ export default function TasksSection({ run }: TasksSectionProps) {
       }
 
       if (event.type === "run_complete") {
+        setStreamError(null);
         router.refresh();
+        return;
+      }
+
+      if (event.type === "error") {
+        setStreamError(event.message);
       }
     });
 
@@ -104,6 +113,9 @@ export default function TasksSection({ run }: TasksSectionProps) {
           <div className="h-0.5 bg-[#DBEAFE] rounded-full overflow-hidden">
             <div className="animate-pulse bg-[#1D4ED8] w-1/3 h-full rounded-full" />
           </div>
+          {streamError ? (
+            <p className="mt-2 text-xs text-[#FCA5A5]">{streamError}</p>
+          ) : null}
         </div>
       ) : null}
 
