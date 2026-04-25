@@ -5,9 +5,10 @@ from typing import Any
 from urllib.parse import quote_plus
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import Task
+from app.models.domain import Escalation, Run, Task, utcnow
 from app.orchestrator.states import VerifyFlowState
 
 ALLOWED_TOOL_NAMES = {
@@ -35,6 +36,12 @@ TOOL_NAME_ALIASES = {
     "get_pr": "github.get_pull_request",
     "create_github_file": "github.create_file",
 }
+
+PLANNING_FAILURE_CATEGORY = "planning_failed"
+PLANNING_FAILURE_MESSAGE = "Planner could not create an executable plan. Manual review is required."
+PLANNING_FAILURE_SUGGESTED_NEXT_ACTION = (
+    "Review the goal and provide a supported filesystem, browser, or GitHub plan before rerunning."
+)
 
 
 def _serialize_task(task: Task) -> dict[str, Any]:
@@ -356,43 +363,92 @@ def _deterministic_plan(state: VerifyFlowState) -> dict[str, Any] | None:
     return None
 
 
-def _fallback_plan(state: VerifyFlowState, reason: str) -> dict[str, Any]:
-    deterministic = _deterministic_plan(state)
-    if deterministic is not None:
-        deterministic["_fallback_reason"] = reason
-        return deterministic
+def _trim_reason(reason: str) -> str:
+    stripped = reason.strip() or "Planner could not create a supported task."
+    return stripped if len(stripped) <= 1000 else stripped[:997] + "..."
 
-    goal = state["goal"]
-    acceptance_criteria = state["acceptance_criteria"] or "Complete the requested task."
-    path = _extract_path_from_goal(goal)
 
-    if path:
-        content = _extract_content_from_goal(goal)
-        return {
-            "tasks": [
-                {
-                    "description": f"Write the requested file at {path}.",
-                    "success_criteria": acceptance_criteria,
-                    "tool_name": "filesystem.write_file",
-                    "tool_params": {"path": path, "content": content},
-                }
-            ],
-            "_fallback_reason": reason,
-        }
-
+def _build_planning_failure_record(state: VerifyFlowState, reason: str) -> dict[str, Any]:
+    timestamp = utcnow().isoformat()
     return {
-        "tasks": [
-            {
-                "description": f"Manual review required for goal: {goal}",
-                "success_criteria": acceptance_criteria,
-                "tool_name": "filesystem.write_file",
-                "tool_params": {
-                    "path": "/tmp/verifyflow/manual-review.txt",
-                    "content": f"Planner fallback invoked. Goal: {goal}",
-                },
-            }
-        ],
-        "_fallback_reason": reason,
+        "category": PLANNING_FAILURE_CATEGORY,
+        "stage": "planning",
+        "message": PLANNING_FAILURE_MESSAGE,
+        "original_goal": state["goal"],
+        "acceptance_criteria": state["acceptance_criteria"],
+        "planner_reason": _trim_reason(reason),
+        "timestamp": timestamp,
+        "recorded_at": timestamp,
+        "suggested_next_action": PLANNING_FAILURE_SUGGESTED_NEXT_ACTION,
+    }
+
+
+async def _persist_planning_failure(
+    state: VerifyFlowState,
+    db: AsyncSession,
+    reason: str,
+) -> tuple[list[Task], dict[str, Any]]:
+    run_id = UUID(state["run_id"])
+    evidence = _build_planning_failure_record(state, reason)
+    task = Task(
+        run_id=run_id,
+        index=0,
+        description="Planning failed; manual review is required.",
+        success_criteria=PLANNING_FAILURE_SUGGESTED_NEXT_ACTION,
+        tool_name="planner.manual_review",
+        tool_params={"planning_failure": evidence},
+        status="escalated",
+        claimed_result={
+            "claimed_success": False,
+            "error": PLANNING_FAILURE_MESSAGE,
+            "planning_failure": evidence,
+        },
+    )
+    db.add(task)
+
+    run_result = await db.execute(select(Run).where(Run.id == run_id))
+    run = run_result.scalar_one_or_none()
+    if run is not None:
+        run.status = "failed"
+        run.failure_record = evidence
+        run.updated_at = utcnow()
+
+    await db.flush()
+    db.add(
+        Escalation(
+            run_id=run_id,
+            task_id=task.id,
+            status="pending_review",
+            failure_reason=f"{PLANNING_FAILURE_MESSAGE} Reason: {evidence['planner_reason']}",
+            evidence_bundle=evidence,
+        )
+    )
+    await db.commit()
+    await db.refresh(task)
+    return [task], evidence
+
+
+async def _planning_failure_state(
+    state: VerifyFlowState,
+    db: AsyncSession,
+    reason: str,
+) -> VerifyFlowState:
+    persisted_tasks, evidence = await _persist_planning_failure(state, db, reason)
+    return {
+        **state,
+        "tasks": [_serialize_task(task) for task in persisted_tasks],
+        "current_task_index": -1,
+        "current_task": None,
+        "current_attempt_id": None,
+        "action_claim": None,
+        "verification_result": None,
+        "executor_telemetry": [],
+        "verifier_telemetry": [],
+        "retry_count": 0,
+        "decision": "finish",
+        "retryable": False,
+        "escalation_reason": evidence["message"],
+        "error": evidence["message"],
     }
 
 
@@ -447,41 +503,49 @@ async def plan(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
                 ),
             )
         except Exception as exc:
-            planned = _fallback_plan(state, str(exc))
+            return await _planning_failure_state(state, db, f"Planner LLM request failed: {exc}")
+
+    if not isinstance(planned, dict):
+        return await _planning_failure_state(state, db, "Planner returned a non-object response.")
 
     raw_tasks = planned.get("tasks", [])
     if not raw_tasks:
-        planned = _fallback_plan(state, "Planner returned no tasks.")
-        raw_tasks = planned["tasks"]
+        return await _planning_failure_state(state, db, "Planner returned no tasks.")
 
     persisted_tasks: list[Task] = []
     normalized_tasks: list[dict[str, Any]] = []
 
-    for raw_task in raw_tasks:
+    for index, raw_task in enumerate(raw_tasks):
         if not isinstance(raw_task, dict):
-            continue
+            return await _planning_failure_state(
+                state,
+                db,
+                f"Planner returned a non-object task at index {index}.",
+            )
 
         tool_name = _normalize_tool_name(raw_task.get("tool_name"))
         if tool_name is None:
-            fallback = _fallback_plan(
+            return await _planning_failure_state(
                 state,
+                db,
                 f"Unsupported planner tool_name: {raw_task.get('tool_name')}",
             )
-            raw_task = fallback["tasks"][0]
-            tool_name = raw_task["tool_name"]
+
+        tool_params = raw_task.get("tool_params", {}) or {}
+        if not isinstance(tool_params, dict):
+            tool_params = {}
 
         normalized_tasks.append(
             {
                 "description": str(raw_task.get("description", "")),
                 "success_criteria": str(raw_task.get("success_criteria", "")),
                 "tool_name": tool_name,
-                "tool_params": raw_task.get("tool_params", {}) or {},
+                "tool_params": tool_params,
             }
         )
 
     if not normalized_tasks:
-        fallback = _fallback_plan(state, "Planner returned no usable task objects.")
-        normalized_tasks = fallback["tasks"]
+        return await _planning_failure_state(state, db, "Planner returned no usable task objects.")
 
     for index, normalized_task in enumerate(normalized_tasks):
         task = Task(

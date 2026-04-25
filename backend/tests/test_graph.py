@@ -671,3 +671,72 @@ async def test_run_graph_persists_structured_failure_record_for_catastrophic_cra
         assert telemetry.hybrid_verifications == 1
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_graph_escalates_planning_failure_without_execution_or_verification(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    chat_json_mock = AsyncMock(
+        return_value={
+            "tasks": [
+                {
+                    "description": "Use an unsupported travel system",
+                    "success_criteria": "A booking exists",
+                    "tool_name": "travel.book_flight",
+                    "tool_params": {"destination": "Mars"},
+                }
+            ]
+        }
+    )
+    execute_mock = AsyncMock(side_effect=AssertionError("Executor should not run for planning failure"))
+    verify_mock = AsyncMock(side_effect=AssertionError("Verifier should not run for planning failure"))
+    monkeypatch.setattr("app.core.llm.executor_llm.chat_json", chat_json_mock)
+    monkeypatch.setattr(graph_module.executor, "execute", execute_mock)
+    monkeypatch.setattr(graph_module.executor, "reset_browser_clients", AsyncMock())
+    monkeypatch.setattr(graph_module.registry, "verify", verify_mock)
+
+    run_id = uuid4()
+    async with session_factory() as session:
+        run = Run(
+            id=run_id,
+            goal="Book a flight to Mars using the travel desk.",
+            acceptance_criteria="A confirmed itinerary is available.",
+            status="pending",
+        )
+        session.add(run)
+        await session.commit()
+
+        await run_graph(str(run_id), session)
+
+        refreshed_run = (await session.execute(select(Run).where(Run.id == run_id))).scalar_one()
+        tasks = (await session.execute(select(Task).where(Task.run_id == run_id))).scalars().all()
+        attempts = (await session.execute(select(TaskAttempt).where(TaskAttempt.run_id == run_id))).scalars().all()
+        escalations = (await session.execute(select(Escalation).where(Escalation.run_id == run_id))).scalars().all()
+        ledger_entries = (await session.execute(select(LedgerEntry).where(LedgerEntry.run_id == run_id))).scalars().all()
+
+        assert refreshed_run.status == "failed"
+        assert refreshed_run.failure_record is not None
+        assert refreshed_run.failure_record["category"] == "planning_failed"
+        assert refreshed_run.failure_record["original_goal"] == run.goal
+        assert "travel.book_flight" in refreshed_run.failure_record["planner_reason"]
+        assert len(tasks) == 1
+        assert tasks[0].status == "escalated"
+        assert tasks[0].tool_name == "planner.manual_review"
+        assert tasks[0].tool_name != "filesystem.write_file"
+        assert tasks[0].tool_params["planning_failure"]["category"] == "planning_failed"
+        assert len(escalations) == 1
+        assert escalations[0].status == "pending_review"
+        assert escalations[0].evidence_bundle["suggested_next_action"]
+        assert attempts == []
+        assert ledger_entries == []
+        assert execute_mock.await_count == 0
+        assert verify_mock.await_count == 0
+
+    await engine.dispose()

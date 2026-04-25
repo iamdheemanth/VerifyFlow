@@ -157,10 +157,20 @@ async def plan_node(state: VerifyFlowState) -> VerifyFlowState:
     planned_state["current_attempt_id"] = None
     planned_state["executor_telemetry"] = []
     planned_state["verifier_telemetry"] = []
-    planned_state["decision"] = None
-    planned_state["retryable"] = True
-    planned_state["escalation_reason"] = None
-    logger.info("Run %s planned %s task(s)", state["run_id"], len(planned_state["tasks"]))
+    if planned_state.get("error"):
+        planned_state["current_task_index"] = -1
+        planned_state["current_task"] = None
+        planned_state["action_claim"] = None
+        planned_state["verification_result"] = None
+        planned_state["decision"] = "finish"
+        planned_state["retryable"] = False
+        planned_state["escalation_reason"] = planned_state.get("escalation_reason") or planned_state["error"]
+        logger.warning("Run %s planning failed: %s", state["run_id"], planned_state["error"])
+    else:
+        planned_state["decision"] = None
+        planned_state["retryable"] = True
+        planned_state["escalation_reason"] = None
+        logger.info("Run %s planned %s task(s)", state["run_id"], len(planned_state["tasks"]))
     return _remember_state(planned_state)
 
 
@@ -571,6 +581,10 @@ def route_after_pick_task(state: VerifyFlowState) -> str:
     return "execute" if state["current_task"] is not None else "finish"
 
 
+def route_after_plan(state: VerifyFlowState) -> str:
+    return "finish" if state.get("decision") == "finish" or state.get("error") else "pick_task"
+
+
 def route_after_verify(state: VerifyFlowState) -> str:
     result = state["verification_result"]
     if result is None:
@@ -604,7 +618,7 @@ graph.add_node("escalate", escalate_node)
 graph.add_node("finish", finish_node)
 
 graph.add_edge(START, "plan")
-graph.add_edge("plan", "pick_task")
+graph.add_conditional_edges("plan", route_after_plan, {"pick_task": "pick_task", "finish": "finish"})
 graph.add_conditional_edges("pick_task", route_after_pick_task, {"execute": "execute", "finish": "finish"})
 graph.add_edge("execute", "verify")
 graph.add_conditional_edges("verify", route_after_verify, {"judge": "judge", "decide": "decide"})

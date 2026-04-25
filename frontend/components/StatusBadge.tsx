@@ -28,6 +28,7 @@ function getStatusTone(status: string): Tone {
         executing: true,
       };
     case "failed":
+    case "planning_failed":
     case "rejected":
       return {
         bg: "bg-red-500/10",
@@ -35,6 +36,7 @@ function getStatusTone(status: string): Tone {
         dotColor: "bg-red-300",
       };
     case "escalated":
+    case "needs_review":
     case "pending_review":
     case "sent_back":
       return {

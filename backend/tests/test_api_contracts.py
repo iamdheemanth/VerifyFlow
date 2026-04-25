@@ -283,6 +283,73 @@ def test_list_runs_endpoint_returns_normalized_run_summaries(client):
     assert payload[0]["task_count"] == 1
 
 
+def test_run_endpoint_represents_planning_failure_state(client):
+    test_client, session_factory = client
+
+    async def seed():
+        async with session_factory() as session:
+            run_id = uuid4()
+            task_id = uuid4()
+            failure_record = {
+                "category": "planning_failed",
+                "stage": "planning",
+                "message": "Planner could not create an executable plan. Manual review is required.",
+                "original_goal": "Book a flight to Mars using the travel desk.",
+                "acceptance_criteria": "A confirmed itinerary is available.",
+                "planner_reason": "Unsupported planner tool_name: travel.book_flight",
+                "timestamp": "2026-04-24T12:00:00+00:00",
+                "suggested_next_action": "Review the goal and provide a supported filesystem, browser, or GitHub plan before rerunning.",
+            }
+            run = Run(
+                id=run_id,
+                owner_subject="test-user",
+                owner_email="test@example.com",
+                goal=failure_record["original_goal"],
+                acceptance_criteria=failure_record["acceptance_criteria"],
+                status="failed",
+                failure_record=failure_record,
+            )
+            task = Task(
+                id=task_id,
+                run_id=run_id,
+                index=0,
+                description="Planning failed; manual review is required.",
+                success_criteria=failure_record["suggested_next_action"],
+                tool_name="planner.manual_review",
+                tool_params={"planning_failure": failure_record},
+                status="escalated",
+                claimed_result={"claimed_success": False, "planning_failure": failure_record},
+            )
+            escalation = Escalation(
+                id=uuid4(),
+                run_id=run_id,
+                task_id=task_id,
+                status="pending_review",
+                failure_reason=failure_record["message"],
+                evidence_bundle=failure_record,
+            )
+            session.add_all([run, task, escalation])
+            await session.commit()
+            return run_id
+
+    import asyncio
+
+    run_id = asyncio.run(seed())
+    response = test_client.get(f"/api/runs/{run_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["failure_record"]["category"] == "planning_failed"
+    assert payload["failure_record"]["original_goal"] == "Book a flight to Mars using the travel desk."
+    assert payload["tasks"][0]["status"] == "escalated"
+    assert payload["tasks"][0]["tool_name"] == "planner.manual_review"
+    assert payload["escalations"][0]["status"] == "pending_review"
+    assert payload["escalations"][0]["evidence_bundle"]["planner_reason"] == (
+        "Unsupported planner tool_name: travel.book_flight"
+    )
+
+
 def test_benchmark_drilldown_endpoint_returns_overview_and_runs(client):
     test_client, session_factory = client
 

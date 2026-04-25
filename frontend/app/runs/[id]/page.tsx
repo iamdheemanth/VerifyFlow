@@ -7,7 +7,7 @@ import StatusBadge from "@/components/StatusBadge";
 import TasksSection from "@/components/TasksSection";
 import TelemetryCard from "@/components/TelemetryCard";
 import { serverApi } from "@/lib/server-api";
-import type { Run } from "@/types/run";
+import type { Run, RunFailureRecord } from "@/types/run";
 
 export const dynamic = "force-dynamic";
 
@@ -90,19 +90,38 @@ function ConfigCard({ run }: { run: Run }) {
   );
 }
 
-function FailureRecordCard({ failureRecord }: { failureRecord: Record<string, unknown> }) {
-  const message =
-    typeof failureRecord.message === "string"
-      ? failureRecord.message
-      : "A run-level orchestration failure was recorded.";
-  const category =
-    typeof failureRecord.category === "string" ? failureRecord.category : null;
+function FailureRecordCard({ failureRecord }: { failureRecord: RunFailureRecord }) {
+  const message = failureRecord.message || "A run-level orchestration failure was recorded.";
+  const category = failureRecord.category || null;
   const stage = typeof failureRecord.stage === "string" ? failureRecord.stage : null;
+  const title = category === "planning_failed" ? "Planning Failed" : "Failure Record";
+  const plannerReason =
+    typeof failureRecord.planner_reason === "string" ? failureRecord.planner_reason : null;
+  const suggestedNextAction =
+    typeof failureRecord.suggested_next_action === "string"
+      ? failureRecord.suggested_next_action
+      : null;
+  const timestamp =
+    typeof failureRecord.timestamp === "string"
+      ? failureRecord.timestamp
+      : typeof failureRecord.recorded_at === "string"
+        ? failureRecord.recorded_at
+        : null;
 
   return (
     <section className="rounded-2xl border border-[#FCA5A5] bg-[#FEF2F2] p-5 shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
-      <h2 className="text-sm font-semibold text-[#7F1D1D]">Failure Record</h2>
+      <h2 className="text-sm font-semibold text-[#7F1D1D]">{title}</h2>
       <p className="mt-2 text-sm text-[#991B1B]">{message}</p>
+      {plannerReason ? (
+        <p className="mt-2 text-xs leading-5 text-[#991B1B]">
+          Reason: {plannerReason}
+        </p>
+      ) : null}
+      {suggestedNextAction ? (
+        <p className="mt-2 text-xs font-medium leading-5 text-[#7F1D1D]">
+          Next action: {suggestedNextAction}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {category ? (
           <span className="rounded-full bg-[#141412] px-2.5 py-1 text-[10px] font-medium text-[#991B1B]">
@@ -112,6 +131,11 @@ function FailureRecordCard({ failureRecord }: { failureRecord: Record<string, un
         {stage ? (
           <span className="rounded-full bg-[#141412] px-2.5 py-1 text-[10px] font-medium text-[#991B1B]">
             Stage: {stage}
+          </span>
+        ) : null}
+        {timestamp ? (
+          <span className="rounded-full bg-[#141412] px-2.5 py-1 text-[10px] font-medium text-[#991B1B]">
+            {formatDate(timestamp)}
           </span>
         ) : null}
       </div>

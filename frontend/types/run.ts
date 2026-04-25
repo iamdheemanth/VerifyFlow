@@ -125,6 +125,19 @@ export interface Escalation {
   reviewer_decisions: ReviewerDecision[];
 }
 
+export interface RunFailureRecord {
+  category: string;
+  message: string;
+  stage?: string;
+  original_goal?: string;
+  acceptance_criteria?: string | null;
+  planner_reason?: string;
+  timestamp?: string;
+  recorded_at?: string;
+  suggested_next_action?: string;
+  [key: string]: unknown;
+}
+
 export interface Run {
   id: string;
   goal: string;
@@ -132,7 +145,7 @@ export interface Run {
   status: string;
   kind: "standard" | "benchmark";
   latest_confidence: number | null;
-  failure_record: Record<string, unknown> | null;
+  failure_record: RunFailureRecord | null;
   created_at: string;
   updated_at: string;
   tasks: Task[];
