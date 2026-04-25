@@ -97,32 +97,70 @@ async def claim_next_queued_run(
     return run
 
 
-async def complete_claimed_run(db: AsyncSession, *, run_id: UUID | str) -> Run | None:
-    run = await db.get(Run, UUID(str(run_id)))
-    if run is None:
-        return None
-
+async def renew_claimed_run(
+    db: AsyncSession,
+    *,
+    run_id: UUID | str,
+    worker_id: str,
+    lease_seconds: int = 1800,
+) -> bool:
     now = utcnow()
-    run.lease_owner = None
-    run.lease_expires_at = None
-    run.finished_at = now
-    run.updated_at = now
+    lease_expires_at = now + timedelta(seconds=lease_seconds)
+    result = await db.execute(
+        update(Run)
+        .where(
+            Run.id == UUID(str(run_id)),
+            Run.lease_owner == worker_id,
+        )
+        .values(
+            lease_expires_at=lease_expires_at,
+            updated_at=now,
+        )
+    )
+    if result.rowcount != 1:
+        await db.rollback()
+        return False
+
     await db.commit()
-    await db.refresh(run)
-    return run
+    return True
+
+
+async def complete_claimed_run(
+    db: AsyncSession,
+    *,
+    run_id: UUID | str,
+    worker_id: str,
+) -> bool:
+    now = utcnow()
+    result = await db.execute(
+        update(Run)
+        .where(
+            Run.id == UUID(str(run_id)),
+            Run.lease_owner == worker_id,
+        )
+        .values(
+            lease_owner=None,
+            lease_expires_at=None,
+            finished_at=now,
+            updated_at=now,
+        )
+    )
+    if result.rowcount != 1:
+        await db.rollback()
+        return False
+
+    await db.commit()
+    return True
 
 
 async def record_worker_failure(
     db: AsyncSession,
     *,
     run_id: UUID | str,
-    worker_id: str | None,
+    worker_id: str,
     exc: Exception,
-) -> Run | None:
-    run = await db.get(Run, UUID(str(run_id)))
-    if run is None:
-        return None
-
+) -> bool:
+    run_uuid = UUID(str(run_id))
     message = _trim_message(str(exc) or exc.__class__.__name__)
     now = utcnow()
     worker_record = _worker_failure_record(
@@ -131,6 +169,11 @@ async def record_worker_failure(
         worker_id=worker_id,
         extra={"exception_type": exc.__class__.__name__},
     )
+    run = await db.get(Run, run_uuid)
+    if run is None or run.lease_owner != worker_id:
+        await db.rollback()
+        return False
+
     if isinstance(run.failure_record, dict):
         run.failure_record = {**run.failure_record, "worker_failure": worker_record}
     else:
@@ -142,8 +185,7 @@ async def record_worker_failure(
     run.finished_at = now
     run.updated_at = now
     await db.commit()
-    await db.refresh(run)
-    return run
+    return True
 
 
 async def detect_stuck_runs(

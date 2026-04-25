@@ -44,8 +44,6 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   jwt: {
-    // Produce a standard HS256 JWT instead of NextAuth's default
-    // encrypted JWE — this lets FastAPI verify it with PyJWT.
     encode: async ({ secret, token, maxAge }) =>
       encodeAuthToken({
         secret: secret as string,

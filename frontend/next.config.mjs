@@ -50,7 +50,6 @@ if (!isLintCommand) {
   requireEnv('GOOGLE_CLIENT_SECRET')
 }
 
-/** @type {import('next').NextConfig} */
 const nextConfig = {};
 
 export default nextConfig;

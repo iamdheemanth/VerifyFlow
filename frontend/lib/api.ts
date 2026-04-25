@@ -22,7 +22,7 @@ const BASE_URL = publicEnv.apiUrl;
 
 let _cachedToken: string | null = null;
 let _tokenFetchedAt: number = 0;
-const TOKEN_TTL_MS = 5 * 60 * 1000; // re-fetch every 5 minutes
+const TOKEN_TTL_MS = 5 * 60 * 1000;
 const STREAM_RECONNECT_DELAY_MS = 1000;
 const STREAM_MAX_RECONNECT_ATTEMPTS = 3;
 
