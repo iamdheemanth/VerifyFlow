@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import ConfidenceBar from "@/components/ConfidenceBar";
 import StatusBadge from "@/components/StatusBadge";
 import { api } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { relativeTime } from "@/lib/utils";
 import type { RunSummary } from "@/types/run";
 
@@ -46,11 +47,7 @@ export default function RecentRunsList({
       setRuns((current) => current.filter((run) => run.id !== runId));
       router.refresh();
     } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "Unable to delete this run."
-      );
+      setError(getApiErrorMessage(deleteError, "Unable to delete this run."));
     } finally {
       setDeletingRunId(null);
     }

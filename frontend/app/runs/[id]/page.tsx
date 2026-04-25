@@ -6,6 +6,7 @@ import LedgerSection from "@/components/LedgerSection";
 import StatusBadge from "@/components/StatusBadge";
 import TasksSection from "@/components/TasksSection";
 import TelemetryCard from "@/components/TelemetryCard";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { serverApi } from "@/lib/server-api";
 import type { Run, RunFailureRecord } from "@/types/run";
 
@@ -15,7 +16,7 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function ErrorState() {
+function ErrorState({ message }: { message: string }) {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 md:px-10">
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -38,7 +39,7 @@ function ErrorState() {
             Run not found
           </h1>
           <p className="mt-2 text-sm text-[#8A8880]">
-            The run you requested could not be loaded.
+            {message}
           </p>
           <Link
             href="/runs"
@@ -153,8 +154,8 @@ export default async function RunDetailPage({
 
   try {
     run = await serverApi.getRun(id);
-  } catch {
-    return <ErrorState />;
+  } catch (loadError) {
+    return <ErrorState message={getApiErrorMessage(loadError, "The run you requested could not be loaded.")} />;
   }
 
   return (

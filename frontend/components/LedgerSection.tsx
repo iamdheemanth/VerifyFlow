@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 import type { LedgerEntry } from "@/types/run";
 
 type LedgerSectionProps = {
@@ -88,11 +89,7 @@ export default function LedgerSection({ runId }: LedgerSectionProps) {
       } catch (loadError) {
         if (!cancelled) {
           setEntries([]);
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load ledger entries."
-          );
+          setError(getApiErrorMessage(loadError, "Unable to load ledger entries."));
         }
       } finally {
         if (!cancelled) {

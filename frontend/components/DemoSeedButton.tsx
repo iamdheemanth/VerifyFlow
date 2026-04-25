@@ -4,11 +4,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function DemoSeedButton() {
   const router = useRouter();
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -26,6 +28,7 @@ export default function DemoSeedButton() {
 
     resetTimerRef.current = setTimeout(() => {
       setStatus("idle");
+      setErrorMessage(null);
       resetTimerRef.current = null;
     }, 2000);
   }
@@ -37,13 +40,15 @@ export default function DemoSeedButton() {
       onClick={() =>
         startTransition(async () => {
           setStatus("idle");
+          setErrorMessage(null);
 
           try {
             await api.seedDemo();
             setStatus("success");
             router.refresh();
             queueReset();
-          } catch {
+          } catch (seedError) {
+            setErrorMessage(getApiErrorMessage(seedError, "Failed to seed demo data."));
             setStatus("error");
             queueReset();
           }
@@ -78,7 +83,7 @@ export default function DemoSeedButton() {
       ) : status === "success" ? (
         <span className="text-[#166534]">Seeded ✓</span>
       ) : status === "error" ? (
-        <span className="text-[#991B1B]">Failed</span>
+        <span className="text-[#991B1B]" title={errorMessage ?? undefined}>Failed</span>
       ) : (
         "Seed Demo Data"
       )}

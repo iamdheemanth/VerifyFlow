@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 
 import { api } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 import type { Escalation } from "@/types/run";
 
 type Decision = "approve" | "reject" | "send_back";
@@ -59,7 +60,7 @@ export default function ReviewQueueBoard({ initialEscalations }: ReviewQueueBoar
           )
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Failed to submit reviewer decision.");
+        setError(getApiErrorMessage(submitError, "Failed to submit reviewer decision."));
       }
     });
   }

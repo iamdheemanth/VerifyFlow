@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { api } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export default function RunForm() {
   const router = useRouter();
@@ -25,9 +26,7 @@ export default function RunForm() {
       });
       router.push(`/runs/${result.id}`);
     } catch (submitError) {
-      setError(
-        submitError instanceof Error ? submitError.message : "Failed to create run."
-      );
+      setError(getApiErrorMessage(submitError, "Failed to create run."));
       setIsLoading(false);
     }
   }

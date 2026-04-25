@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import StatusBadge from "@/components/StatusBadge";
 import { api, getAuthHeaders } from "@/lib/api";
+import { createApiError, getApiErrorMessage } from "@/lib/api-error";
 import { publicEnv } from "@/lib/env";
 import type { Escalation } from "@/types/run";
 
@@ -31,9 +32,10 @@ async function submitReviewerDecision(
   notes: string | null,
   reviewerKey: string
 ) {
+  const path = `/review/escalations/${escalationId}/decision`;
   const authHeaders = await getAuthHeaders();
   const response = await fetch(
-    `${BASE_URL}/review/escalations/${escalationId}/decision`,
+    `${BASE_URL}${path}`,
     {
       method: "POST",
       headers: {
@@ -50,7 +52,10 @@ async function submitReviewerDecision(
   );
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await createApiError(response, {
+      path,
+      operation: "Submit review decision",
+    });
   }
 }
 
@@ -75,11 +80,7 @@ export default function ReviewPage() {
       const queue = await api.getEscalationQueue();
       setEscalations(queue);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load escalation queue."
-      );
+      setError(getApiErrorMessage(loadError, "Failed to load escalation queue."));
     } finally {
       setLoading(false);
     }
@@ -171,10 +172,7 @@ export default function ReviewPage() {
     } catch (submitError) {
       setFormErrors((current) => ({
         ...current,
-        [escalation.id]:
-          submitError instanceof Error
-            ? submitError.message
-            : "Failed to submit decision.",
+        [escalation.id]: getApiErrorMessage(submitError, "Failed to submit decision."),
       }));
     } finally {
       setSubmitting((current) => ({

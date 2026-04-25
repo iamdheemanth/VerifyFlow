@@ -15,6 +15,7 @@ import type {
   RunSummary,
 } from "@/types/run";
 
+import { createApiError } from "@/lib/api-error";
 import { publicEnv } from "@/lib/env";
 
 const BASE_URL = publicEnv.apiUrl;
@@ -134,7 +135,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    throw await createApiError(response, { path });
   }
 
   if (response.status === 204 || response.status === 205) {
@@ -254,6 +255,7 @@ export const api = {
     };
 
     const connect = async (attempt: number) => {
+      const path = `/runs/${encodeURIComponent(run_id)}/stream`;
       const token = await getApiToken();
       if (!token) {
         onEvent({ type: "error", message: "Authentication is required to stream this run." });
@@ -264,7 +266,7 @@ export const api = {
       activeController = controller;
 
       try {
-        const response = await fetch(`${BASE_URL}/runs/${encodeURIComponent(run_id)}/stream`, {
+        const response = await fetch(`${BASE_URL}${path}`, {
           headers: {
             Accept: "text/event-stream",
             Authorization: `Bearer ${token}`,
@@ -275,22 +277,25 @@ export const api = {
 
         if (response.status === 401) {
           _cachedToken = null;
-          scheduleReconnect(attempt, "Authentication expired while opening the run stream.");
+          const error = await createApiError(response, { path, operation: "Open run stream" });
+          scheduleReconnect(attempt, error.message);
           return;
         }
 
         if (response.status === 403) {
-          onEvent({ type: "error", message: "Authentication failed while opening the run stream." });
+          const error = await createApiError(response, { path, operation: "Open run stream" });
+          onEvent({ type: "error", message: error.message });
           return;
         }
 
         if (response.status === 404) {
-          onEvent({ type: "error", message: "Run stream not found or no longer available." });
+          const error = await createApiError(response, { path, operation: "Open run stream" });
+          onEvent({ type: "error", message: error.message });
           return;
         }
 
         if (!response.ok || !response.body) {
-          throw new Error(`Stream request failed: ${response.status}`);
+          throw await createApiError(response, { path, operation: "Open run stream" });
         }
 
         const completed = await readRunStream(response.body, onEvent, controller.signal);

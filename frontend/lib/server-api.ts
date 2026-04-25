@@ -5,6 +5,7 @@ import { type JWT } from 'next-auth/jwt'
 
 import { authOptions } from '@/lib/auth'
 import { encodeAuthToken } from '@/lib/auth-token'
+import { createApiError } from '@/lib/api-error'
 import { publicEnv } from '@/lib/env'
 import { serverEnv } from '@/lib/server-env'
 import type {
@@ -45,7 +46,7 @@ async function serverRequest<T>(path: string): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`)
+    throw await createApiError(response, { path })
   }
 
   return response.json() as Promise<T>
