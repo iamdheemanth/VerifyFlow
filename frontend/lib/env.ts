@@ -6,8 +6,8 @@ const PLACEHOLDER_VALUES = new Set([
   'replace-with-api-url',
 ])
 
-function requirePublicEnv(name: string): string {
-  const value = process.env[name]?.trim()
+function requirePublicEnv(name: string, rawValue: string | undefined): string {
+  const value = rawValue?.trim()
   if (!value) {
     throw new Error(`Missing required environment variable ${name}.`)
   }
@@ -17,8 +17,8 @@ function requirePublicEnv(name: string): string {
   return value
 }
 
-function requirePublicUrl(name: string): string {
-  const value = requirePublicEnv(name)
+function requirePublicUrl(name: string, rawValue: string | undefined): string {
+  const value = requirePublicEnv(name, rawValue)
   try {
     const parsed = new URL(value)
     if (!['http:', 'https:'].includes(parsed.protocol)) {
@@ -31,5 +31,5 @@ function requirePublicUrl(name: string): string {
 }
 
 export const publicEnv = {
-  apiUrl: requirePublicUrl('NEXT_PUBLIC_API_URL'),
+  apiUrl: requirePublicUrl('NEXT_PUBLIC_API_URL', process.env.NEXT_PUBLIC_API_URL),
 }

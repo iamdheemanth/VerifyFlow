@@ -19,10 +19,74 @@ from app.services import reliability
 _browser_clients: dict[str, BrowserMCP] = {}
 _active_browser_channel: str | None = None
 
+_GITHUB_REQUIRED_PARAMS: dict[str, tuple[str, ...]] = {
+    "github.create_file": ("repo", "path", "content", "message"),
+    "github.get_file": ("repo", "path"),
+    "github.create_pull_request": ("repo", "title", "body", "head", "base"),
+}
+
+_GITHUB_ALLOWED_PARAMS = {tool_name: set(params) for tool_name, params in _GITHUB_REQUIRED_PARAMS.items()}
+
+
+class ExecutionParameterError(ValueError):
+    def __init__(self, tool_name: str, missing_params: list[str]) -> None:
+        self.tool_name = tool_name
+        self.missing_params = missing_params
+        missing = ", ".join(missing_params)
+        super().__init__(f"Missing required parameter(s) for {tool_name}: {missing}")
+
+    def to_error_details(self, *, source: str) -> dict[str, Any]:
+        return {
+            "message": str(self),
+            "category": "invalid_tool_params",
+            "retryable": False,
+            "tool_name": self.tool_name,
+            "source": source,
+            "missing_params": self.missing_params,
+            "exception_type": self.__class__.__name__,
+        }
+
 
 async def _load_task(db: AsyncSession, task_id: str) -> Task:
     result = await db.execute(select(Task).where(Task.id == UUID(task_id)))
     return result.scalar_one()
+
+
+def _default_github_create_file_message(path: Any) -> str:
+    path_text = str(path).strip() if path is not None else "file"
+    return f"Create {path_text or 'file'} via VerifyFlow"
+
+
+def _normalize_github_params(tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(params)
+    if "repo" not in normalized and "repository" in normalized:
+        normalized["repo"] = normalized["repository"]
+    if tool_name == "github.create_file":
+        message = normalized.get("message")
+        if not isinstance(message, str) or not message.strip():
+            normalized["message"] = _default_github_create_file_message(normalized.get("path"))
+    allowed = _GITHUB_ALLOWED_PARAMS.get(tool_name)
+    if allowed is None:
+        return normalized
+    return {key: value for key, value in normalized.items() if key in allowed}
+
+
+def _validate_github_params(tool_name: str, params: dict[str, Any]) -> None:
+    required = _GITHUB_REQUIRED_PARAMS.get(tool_name)
+    if required is None:
+        raise ValueError(f"Unsupported GitHub tool: {tool_name}")
+
+    missing: list[str] = []
+    for name in required:
+        value = params.get(name)
+        if name == "content":
+            if value is None:
+                missing.append(name)
+        elif not isinstance(value, str) or not value.strip():
+            missing.append(name)
+
+    if missing:
+        raise ExecutionParameterError(tool_name, missing)
 
 
 async def reset_browser_clients() -> None:
@@ -48,6 +112,8 @@ async def _get_browser_client(channel: str) -> BrowserMCP:
 
 
 async def _call_github(tool_name: str, params: dict[str, Any]) -> Any:
+    params = _normalize_github_params(tool_name, params)
+    _validate_github_params(tool_name, params)
     async with GitHubMCP() as github:
         if tool_name == "github.create_file":
             return await github.create_file(**params)
@@ -352,6 +418,8 @@ async def execute(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
     params = current_task.get("tool_params", {}) or {}
     if state["verification_result"] is not None and state["retry_count"] > 0:
         params = await _revise_tool_params_for_retry(state, tool_name, params)
+    if tool_name.startswith("github."):
+        params = _normalize_github_params(tool_name, params)
 
     try:
         if tool_name.startswith("github."):

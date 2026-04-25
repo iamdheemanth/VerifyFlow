@@ -1,21 +1,21 @@
 # VerifyFlow
 
-VerifyFlow is an agent execution and verification platform for turning a user goal into planned tasks, running those tasks through tool-backed executors, and recording whether the work actually satisfied the requested outcome. It combines a FastAPI backend, a Next.js dashboard, deterministic verifiers, optional LLM judge fallback, a durable run worker, telemetry, audit-style ledgers, review escalation, and benchmark workflows.
+VerifyFlow is an agent execution and verification platform for turning a user goal into planned tasks, running those tasks through tool-backed executors and recording whether the work actually satisfied the requested outcome. It combines a FastAPI backend, a Next.js dashboard, deterministic verifiers, optional LLM judge fallback, a durable run worker, telemetry, audit-style ledgers, review escalation and benchmark workflows.
 
 ## Problem
 
-LLM agents can produce convincing progress while leaving the real outcome ambiguous. VerifyFlow is built around the opposite assumption: execution should be observable, recoverable, and independently checked. A run is planned, executed, verified, logged, and, when the system cannot support or verify the goal, escalated for manual review instead of being marked as successful by default.
+LLM agents can produce convincing progress while leaving the real outcome ambiguous. VerifyFlow is built around the opposite assumption: execution should be observable, recoverable and independently checked. A run is planned, executed, verified and logged. When the system cannot support or verify the goal, the run is escalated for manual review instead of being marked as successful by default.
 
 ## Core Features
 
-- **Agent execution:** planner, executor, verifier, and judge components coordinate run tasks through the backend orchestration graph.
-- **Deterministic verification:** filesystem, browser, and GitHub verifier modules can check concrete evidence instead of relying only on model output.
+- **Agent execution:** planner, executor, verifier and judge components coordinate run tasks through the backend orchestration graph.
+- **Deterministic verification:** filesystem, browser and GitHub verifier modules can check concrete evidence instead of relying only on model output.
 - **Judge fallback:** an LLM judge can assess evidence when deterministic checks are insufficient or unavailable.
-- **Telemetry and ledger:** task attempts, verification confidence, latency, token usage, tool calls, and ledger entries are persisted for auditability.
-- **Review queue:** escalated tasks can be reviewed, approved, rejected, or sent back for another queued run.
+- **Telemetry and ledger:** task attempts, verification confidence, latency, token usage, tool calls and ledger entries are persisted for auditability.
+- **Review queue:** escalated tasks can be reviewed, approved, rejected or sent back for another queued run.
 - **Benchmarks:** benchmark suites and cases exercise runs against known scenarios and expected outcomes.
-- **Frontend dashboard:** the Next.js UI exposes runs, run details, task state, telemetry, ledgers, review queues, configurations, and benchmarks.
-- **Durable execution:** runs are persisted as queued work and processed by a worker with claim leases, failure recording, and stuck-run recovery helpers.
+- **Frontend dashboard:** the Next.js UI exposes runs, run details, task state, telemetry, ledgers, review queues, configurations and benchmarks.
+- **Durable execution:** runs are persisted as queued work and processed by a worker with claim leases, failure recording and stuck-run recovery helpers.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ FastAPI backend
 PostgreSQL or SQLite-compatible development database
 ```
 
-The backend exposes authenticated API routes under `/api`, stores domain state with SQLAlchemy, and manages database shape through Alembic. New runs are inserted as `queued`; a separate worker claims queued runs, executes the orchestration graph, records failures, and clears its lease when finished.
+The backend exposes authenticated API routes under `/api`, stores domain state with SQLAlchemy and manages database shape through Alembic. New runs are inserted as `queued`; a separate worker claims queued runs, executes the orchestration graph, records failures and clears its lease when finished.
 
 At a high level, the run flow is:
 
@@ -39,14 +39,14 @@ At a high level, the run flow is:
 user goal -> planner -> task list -> executor -> verifier -> judge fallback -> completed / failed / needs_review
 ```
 
-Unsupported goals, planner failures, unverifiable work, and failed verification paths can end in `needs_review` rather than being disguised as completed work.
+Unsupported goals, planner failures, unverifiable work and failed verification paths can end in `needs_review` rather than being disguised as completed work.
 
 ## Repository Layout
 
 ```text
-backend/     FastAPI API, SQLAlchemy models, Alembic migrations, agents, worker, tests
+backend/     FastAPI API, SQLAlchemy models, Alembic migrations, agents, worker and tests
 frontend/    Next.js app, typed API client, dashboard components, auth integration
-.github/     Backend, frontend, and dependency security workflows
+.github/     Backend, frontend and dependency security workflows
 ```
 
 ## Local Setup
@@ -56,7 +56,7 @@ frontend/    Next.js app, typed API client, dashboard components, auth integrati
 - Python 3.12
 - Node.js 20
 - npm
-- PostgreSQL 16 for the default local database, or another database URL supported by SQLAlchemy/Alembic
+- PostgreSQL 16 for the default local database or another database URL supported by SQLAlchemy/Alembic
 
 The included `docker-compose.yml` defines a PostgreSQL service. Use only the database service for local development unless you add complete Dockerfiles for the apps:
 
@@ -170,23 +170,27 @@ npm run build
 
 The frontend build requires the frontend environment variables listed above. CI also runs TypeScript checking with `npx tsc --noEmit`.
 
+## Benchmark Testing Flow
+
+With the backend API, worker and frontend running, open `http://localhost:3000/benchmarks`.
+
+Use **Seed demo benchmarks** on an empty local account to create the demo benchmark suite and sample runs. If the seed response creates `0` runs, demo data may already exist for that user or another run already prevents reseeding.
+
+The Benchmarks page also lists available benchmark cases. Use **Run benchmark** on a case to create a new queued benchmark run, then keep the backend worker running so it can claim and execute the run:
+
+```bash
+cd backend
+python -m app.worker.run_worker
+```
+
 ## Security Model
 
 - **Authentication:** FastAPI routes use bearer JWT validation with `NEXTAUTH_SECRET`; the frontend uses NextAuth and sends authenticated requests to the backend.
-- **Object-level authorization:** run, review, benchmark, configuration, and ledger access is scoped by the authenticated user's stable subject where applicable.
+- **Object-level authorization:** run, review, benchmark, configuration and ledger access is scoped by the authenticated user's stable subject where applicable.
 - **Filesystem sandboxing:** filesystem paths are normalized and must remain under configured `FILESYSTEM_ALLOWED_PATHS`; unsafe or out-of-scope paths raise sandbox errors.
 - **Allowed paths:** defaults are temporary VerifyFlow directories; production-like use should configure explicit allowed directories.
-- **Auditability:** ledger entries, task attempts, confidence scores, tool calls, failure records, reviewer decisions, and telemetry are persisted to make run outcomes inspectable.
+- **Auditability:** ledger entries, task attempts, confidence scores, tool calls, failure records, reviewer decisions and telemetry are persisted to make run outcomes inspectable.
 - **No auth bypass for streaming:** run streaming uses authenticated frontend API helpers and backend object checks rather than unauthenticated SSE access.
-
-## Known Limitations
-
-- VerifyFlow is best treated as an MVP/prototype rather than a production-ready agent operations platform.
-- Unsupported tools, unsupported goals, planner failures, and unverifiable outcomes may escalate to review instead of completing automatically.
-- The local setup assumes a developer-managed database, env files, and a separately running worker process.
-- Browser automation and external provider behavior depend on local browser availability, provider credentials, network access, and tool configuration.
-- The Docker Compose file currently defines the database clearly, but the app Docker setup should be reviewed before relying on it as a complete deployment path.
-- No license file is currently present in the repository, so reuse terms are not yet defined.
 
 ## Screenshots
 
@@ -202,7 +206,7 @@ Screenshots are not included yet. Suggested additions:
 GitHub Actions workflows are included for:
 
 - Backend tests and Alembic migration validation with PostgreSQL
-- Frontend type check, lint, and build
+- Frontend type check, lint and build
 - Python and Node dependency security audits
 
 Workflow files live in `.github/workflows/`.

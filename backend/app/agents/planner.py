@@ -85,16 +85,91 @@ def _extract_path_from_goal(goal: str) -> str | None:
     return None
 
 
+def _extract_github_file_path(text: str) -> str | None:
+    named = re.search(
+        r"(?:file\s+named|file\s+called|path)\s+[\"']?([A-Za-z0-9._/-]+)[\"']?",
+        text,
+        re.IGNORECASE,
+    )
+    if named:
+        return named.group(1).strip().rstrip(".,")
+
+    direct = re.search(
+        r"\b([A-Za-z0-9._/-]+\.[A-Za-z0-9._-]+)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if direct:
+        return direct.group(1).strip().rstrip(".,")
+
+    return None
+
+
+def _extract_github_repo(text: str) -> str | None:
+    patterns = (
+        r"github\s+repository\s+[\"']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|[A-Za-z0-9_.-]+)[\"']?",
+        r"(?<![-A-Za-z0-9_.])repository\s+[\"']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|[A-Za-z0-9_.-]+)[\"']?",
+        r"(?<![-A-Za-z0-9_.])repo\s+[\"']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|[A-Za-z0-9_.-]+)[\"']?",
+        r"\bin\s+[\"']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|[A-Za-z0-9_.-]+)[\"']?\s+(?:with|and|containing)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip().rstrip(".,")
+    return None
+
+
 def _extract_content_from_goal(goal: str) -> str:
-    quoted_content = re.search(r'content\s+["\'](.+?)["\']', goal, re.IGNORECASE)
+    quoted_content = re.search(r'(?:content|containing)\s+["\'](.+?)["\']', goal, re.IGNORECASE)
     if quoted_content:
         return quoted_content.group(1)
 
-    trailing_content = re.search(r"content\s+(.+)$", goal, re.IGNORECASE)
+    trailing_content = re.search(r"(?:content|containing)\s+([^.\n]+)", goal, re.IGNORECASE)
     if trailing_content:
-        return trailing_content.group(1).strip()
+        return trailing_content.group(1).strip().strip("\"'")
 
     return goal.strip()
+
+
+def _extract_commit_message_from_text(text: str) -> str | None:
+    patterns = (
+        r"commit\s+message\s*[:=]\s*[\"'](.+?)[\"']",
+        r"commit\s+message\s*[:=]\s*([^\n.]+)",
+        r"with\s+commit\s+message\s+[\"'](.+?)[\"']",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            message = match.group(1).strip()
+            if message:
+                return message
+    return None
+
+
+def _default_github_create_file_message(path: Any) -> str:
+    path_text = str(path).strip() if path is not None else "file"
+    return f"Create {path_text or 'file'} via VerifyFlow"
+
+
+def _normalize_tool_params(
+    *,
+    tool_name: str,
+    tool_params: dict[str, Any],
+    state: VerifyFlowState,
+) -> dict[str, Any]:
+    normalized = dict(tool_params)
+    if tool_name.startswith("github.") and "repo" not in normalized and "repository" in normalized:
+        normalized["repo"] = normalized.pop("repository")
+    if tool_name == "github.create_file":
+        message = normalized.get("message")
+        if not isinstance(message, str) or not message.strip():
+            extracted_message = _extract_commit_message_from_text(
+                f"{state['goal']}\n{state['acceptance_criteria'] or ''}"
+            )
+            normalized["message"] = extracted_message or _default_github_create_file_message(
+                normalized.get("path")
+            )
+    return normalized
 
 
 def _extract_url_from_text(text: str) -> str | None:
@@ -280,6 +355,36 @@ def _deterministic_search_plan(
 def _deterministic_plan(state: VerifyFlowState) -> dict[str, Any] | None:
     goal = state["goal"]
     acceptance_criteria = state["acceptance_criteria"] or "Complete the requested task."
+    combined_text = f"{goal}\n{acceptance_criteria}"
+    if re.search(r"\bgithub\b|\brepository\b|\brepo\b", combined_text, re.IGNORECASE) and re.search(
+        r"\b(create|write|add)\b",
+        combined_text,
+        re.IGNORECASE,
+    ):
+        repo = _extract_github_repo(combined_text)
+        github_path = _extract_github_file_path(combined_text)
+        if repo and github_path:
+            content = _extract_content_from_goal(goal)
+            message = _extract_commit_message_from_text(combined_text) or _default_github_create_file_message(
+                github_path
+            )
+            return {
+                "tasks": [
+                    {
+                        "description": f"Create {github_path} in the GitHub repository {repo}.",
+                        "success_criteria": acceptance_criteria,
+                        "tool_name": "github.create_file",
+                        "tool_params": {
+                            "repo": repo,
+                            "path": github_path,
+                            "content": content,
+                            "message": message,
+                        },
+                    }
+                ],
+                "_planner_mode": "deterministic_github_create_file",
+            }
+
     path = _extract_path_from_goal(goal)
 
     if path:
@@ -303,7 +408,6 @@ def _deterministic_plan(state: VerifyFlowState) -> dict[str, Any] | None:
             )
         return {"tasks": tasks, "_planner_mode": "deterministic_filesystem"}
 
-    combined_text = f"{goal}\n{acceptance_criteria}"
     url = _extract_url_from_text(combined_text)
     click_target = _extract_click_target(combined_text)
     has_browser_interaction = re.search(
@@ -486,7 +590,8 @@ async def plan(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
                             "Use only these exact tool_name values: "
                             "github.create_file, github.get_file, github.create_pull_request, "
                             "filesystem.write_file, filesystem.read_file, browser.navigate, "
-                            "browser.fill, browser.click."
+                            "browser.fill, browser.click. "
+                            "For github.create_file, tool_params must include repo, path, content, and message."
                         ),
                     },
                     {
@@ -534,6 +639,11 @@ async def plan(state: VerifyFlowState, db: AsyncSession) -> VerifyFlowState:
         tool_params = raw_task.get("tool_params", {}) or {}
         if not isinstance(tool_params, dict):
             tool_params = {}
+        tool_params = _normalize_tool_params(
+            tool_name=tool_name,
+            tool_params=tool_params,
+            state=state,
+        )
 
         normalized_tasks.append(
             {

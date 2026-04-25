@@ -87,7 +87,7 @@ def _state_for_task(task: Task, action_claim: dict, verification_result: dict | 
 
 
 @pytest.mark.asyncio
-async def test_judge_returns_verified_false_when_no_file_creation(monkeypatch: pytest.MonkeyPatch):
+async def test_judge_returns_verified_false_when_no_github_file_creation(monkeypatch: pytest.MonkeyPatch):
     session, engine = await _make_session()
     try:
         _, task = await _seed_run_and_task(
@@ -128,7 +128,7 @@ async def test_judge_returns_verified_false_when_no_file_creation(monkeypatch: p
 
 
 @pytest.mark.asyncio
-async def test_judge_returns_verified_true_for_successful_pr(monkeypatch: pytest.MonkeyPatch):
+async def test_judge_returns_verified_true_for_successful_github_pr(monkeypatch: pytest.MonkeyPatch):
     session, engine = await _make_session()
     try:
         _, task = await _seed_run_and_task(

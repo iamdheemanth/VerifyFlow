@@ -598,6 +598,344 @@ async def test_verify_node_treats_unrecoverable_verifier_exception_as_terminal(m
 
 
 @pytest.mark.asyncio
+async def test_github_create_file_executor_passes_message_to_mcp(monkeypatch: pytest.MonkeyPatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    captured_params = {}
+
+    class FakeGitHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def create_file(self, **params):
+            captured_params.update(params)
+            return {"is_error": False, "structured_content": {"created": True}}
+
+    monkeypatch.setattr(graph_module.executor, "GitHubMCP", FakeGitHub)
+
+    run_id = uuid4()
+    async with session_factory() as session:
+        run = Run(
+            id=run_id,
+            goal="Create a GitHub file",
+            acceptance_criteria="The file exists",
+            status="executing",
+        )
+        task = Task(
+            run_id=run_id,
+            index=0,
+            description="Create a GitHub file",
+            success_criteria="The file exists",
+            tool_name="github.create_file",
+            tool_params={
+                "repo": "my-test-repo",
+                "path": "verifyflow-test.txt",
+                "content": "hello from verifyflow",
+                "message": "Add VerifyFlow smoke test",
+            },
+            status="executing",
+        )
+        session.add_all([run, task])
+        await session.commit()
+        await session.refresh(task)
+
+        state = {
+            "run_id": str(run_id),
+            "goal": run.goal,
+            "acceptance_criteria": run.acceptance_criteria,
+            "tasks": [graph_module._serialize_task(task)],
+            "current_task_index": task.index,
+            "current_task": graph_module._serialize_task(task),
+            "current_attempt_id": None,
+            "action_claim": None,
+            "verification_result": None,
+            "executor_telemetry": [],
+            "verifier_telemetry": [],
+            "retry_count": 0,
+            "decision": None,
+            "retryable": True,
+            "escalation_reason": None,
+            "error": None,
+        }
+
+        updated = await graph_module.executor.execute(state, session)
+
+    assert captured_params == {
+        "repo": "my-test-repo",
+        "path": "verifyflow-test.txt",
+        "content": "hello from verifyflow",
+        "message": "Add VerifyFlow smoke test",
+    }
+    assert updated["action_claim"]["claimed_success"] is True
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_github_create_file_executor_defaults_missing_message(monkeypatch: pytest.MonkeyPatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    captured_params = {}
+
+    class FakeGitHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def create_file(self, **params):
+            captured_params.update(params)
+            return {"is_error": False, "structured_content": {"created": True}}
+
+    monkeypatch.setattr(graph_module.executor, "GitHubMCP", FakeGitHub)
+
+    run_id = uuid4()
+    async with session_factory() as session:
+        run = Run(
+            id=run_id,
+            goal="Create a GitHub file",
+            acceptance_criteria="The file exists",
+            status="executing",
+        )
+        task = Task(
+            run_id=run_id,
+            index=0,
+            description="Create a GitHub file",
+            success_criteria="The file exists",
+            tool_name="github.create_file",
+            tool_params={
+                "repo": "my-test-repo",
+                "path": "verifyflow-test.txt",
+                "content": "hello from verifyflow",
+            },
+            status="executing",
+        )
+        session.add_all([run, task])
+        await session.commit()
+        await session.refresh(task)
+
+        state = {
+            "run_id": str(run_id),
+            "goal": run.goal,
+            "acceptance_criteria": run.acceptance_criteria,
+            "tasks": [graph_module._serialize_task(task)],
+            "current_task_index": task.index,
+            "current_task": graph_module._serialize_task(task),
+            "current_attempt_id": None,
+            "action_claim": None,
+            "verification_result": None,
+            "executor_telemetry": [],
+            "verifier_telemetry": [],
+            "retry_count": 0,
+            "decision": None,
+            "retryable": True,
+            "escalation_reason": None,
+            "error": None,
+        }
+
+        updated = await graph_module.executor.execute(state, session)
+
+    assert captured_params["message"] == "Create verifyflow-test.txt via VerifyFlow"
+    assert updated["action_claim"]["params"]["message"] == "Create verifyflow-test.txt via VerifyFlow"
+    assert updated["action_claim"]["claimed_success"] is True
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_github_create_file_executor_normalizes_repository_alias(monkeypatch: pytest.MonkeyPatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    captured_params = {}
+
+    class FakeGitHub:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def create_file(self, **params):
+            captured_params.update(params)
+            return {"is_error": False, "structured_content": {"created": True}}
+
+    monkeypatch.setattr(graph_module.executor, "GitHubMCP", FakeGitHub)
+
+    run_id = uuid4()
+    async with session_factory() as session:
+        run = Run(
+            id=run_id,
+            goal="Create a GitHub file",
+            acceptance_criteria="The file exists",
+            status="executing",
+        )
+        task = Task(
+            run_id=run_id,
+            index=0,
+            description="Create a GitHub file",
+            success_criteria="The file exists",
+            tool_name="github.create_file",
+            tool_params={
+                "repository": "my-test-repo",
+                "path": "verifyflow-test.txt",
+                "content": "hello from verifyflow",
+            },
+            status="executing",
+        )
+        session.add_all([run, task])
+        await session.commit()
+        await session.refresh(task)
+
+        state = {
+            "run_id": str(run_id),
+            "goal": run.goal,
+            "acceptance_criteria": run.acceptance_criteria,
+            "tasks": [graph_module._serialize_task(task)],
+            "current_task_index": task.index,
+            "current_task": graph_module._serialize_task(task),
+            "current_attempt_id": None,
+            "action_claim": None,
+            "verification_result": None,
+            "executor_telemetry": [],
+            "verifier_telemetry": [],
+            "retry_count": 0,
+            "decision": None,
+            "retryable": True,
+            "escalation_reason": None,
+            "error": None,
+        }
+
+        updated = await graph_module.executor.execute(state, session)
+
+    assert captured_params == {
+        "repo": "my-test-repo",
+        "path": "verifyflow-test.txt",
+        "content": "hello from verifyflow",
+        "message": "Create verifyflow-test.txt via VerifyFlow",
+    }
+    assert "repository" not in updated["action_claim"]["params"]
+    assert updated["action_claim"]["claimed_success"] is True
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("params", "missing_param"),
+    [
+        (
+            {
+                "path": "verifyflow-test.txt",
+                "content": "hello from verifyflow",
+                "message": "Add VerifyFlow smoke test",
+            },
+            "repo",
+        ),
+        (
+            {
+                "repo": "my-test-repo",
+                "content": "hello from verifyflow",
+                "message": "Add VerifyFlow smoke test",
+            },
+            "path",
+        ),
+        (
+            {
+                "repo": "my-test-repo",
+                "path": "verifyflow-test.txt",
+                "message": "Add VerifyFlow smoke test",
+            },
+            "content",
+        ),
+    ],
+)
+async def test_github_create_file_executor_rejects_missing_required_params_before_mcp(
+    monkeypatch: pytest.MonkeyPatch,
+    params: dict,
+    missing_param: str,
+):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    class FakeGitHub:
+        def __init__(self):
+            raise AssertionError("GitHubMCP should not be instantiated for invalid params")
+
+    monkeypatch.setattr(graph_module.executor, "GitHubMCP", FakeGitHub)
+
+    run_id = uuid4()
+    async with session_factory() as session:
+        run = Run(
+            id=run_id,
+            goal="Create a GitHub file",
+            acceptance_criteria="The file exists",
+            status="executing",
+        )
+        task = Task(
+            run_id=run_id,
+            index=0,
+            description="Create a GitHub file",
+            success_criteria="The file exists",
+            tool_name="github.create_file",
+            tool_params=params,
+            status="executing",
+        )
+        session.add_all([run, task])
+        await session.commit()
+        await session.refresh(task)
+
+        state = {
+            "run_id": str(run_id),
+            "goal": run.goal,
+            "acceptance_criteria": run.acceptance_criteria,
+            "tasks": [graph_module._serialize_task(task)],
+            "current_task_index": task.index,
+            "current_task": graph_module._serialize_task(task),
+            "current_attempt_id": None,
+            "action_claim": None,
+            "verification_result": None,
+            "executor_telemetry": [],
+            "verifier_telemetry": [],
+            "retry_count": 0,
+            "decision": None,
+            "retryable": True,
+            "escalation_reason": None,
+            "error": None,
+        }
+
+        updated = await graph_module.executor.execute(state, session)
+
+    assert updated["action_claim"]["claimed_success"] is False
+    assert (
+        f"Missing required parameter(s) for github.create_file: {missing_param}"
+        == updated["action_claim"]["error"]
+    )
+    assert updated["action_claim"]["error_details"]["category"] == "invalid_tool_params"
+    assert updated["action_claim"]["error_details"]["missing_params"] == [missing_param]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_run_graph_persists_structured_failure_record_for_catastrophic_crash(monkeypatch: pytest.MonkeyPatch):
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

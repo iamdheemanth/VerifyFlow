@@ -9,7 +9,9 @@ import { createApiError } from '@/lib/api-error'
 import { publicEnv } from '@/lib/env'
 import { serverEnv } from '@/lib/server-env'
 import type {
+  BenchmarkCase,
   BenchmarkOverview,
+  BenchmarkSuite,
   ConfigurationComparison,
   ReliabilityOverview,
   Run,
@@ -67,6 +69,14 @@ export const serverApi = {
 
   getBenchmarkOverview() {
     return serverRequest<BenchmarkOverview[]>('/benchmarks/overview')
+  },
+
+  getBenchmarkSuites() {
+    return serverRequest<BenchmarkSuite[]>('/benchmarks/suites')
+  },
+
+  getBenchmarkCases() {
+    return serverRequest<BenchmarkCase[]>('/benchmarks/cases')
   },
 
   getConfigurationComparison() {

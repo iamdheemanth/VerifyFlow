@@ -1,7 +1,6 @@
-import Link from "next/link";
-
+import BenchmarkControls from "@/components/BenchmarkControls";
 import { serverApi } from "@/lib/server-api";
-import type { BenchmarkOverview } from "@/types/run";
+import type { BenchmarkCase, BenchmarkOverview, BenchmarkSuite } from "@/types/run";
 
 export const dynamic = "force-dynamic";
 
@@ -78,11 +77,19 @@ function MetricCell({
 
 export default async function BenchmarksPage() {
   let overviews: BenchmarkOverview[] = [];
+  let suites: BenchmarkSuite[] = [];
+  let cases: BenchmarkCase[] = [];
 
   try {
-    overviews = await serverApi.getBenchmarkOverview();
+    [overviews, suites, cases] = await Promise.all([
+      serverApi.getBenchmarkOverview(),
+      serverApi.getBenchmarkSuites(),
+      serverApi.getBenchmarkCases(),
+    ]);
   } catch {
     overviews = [];
+    suites = [];
+    cases = [];
   }
 
   return (
@@ -96,33 +103,7 @@ export default async function BenchmarksPage() {
         </p>
       </div>
 
-      {overviews.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-[#2A2A26] bg-[#141412] py-16 text-center shadow-[0_20px_70px_-58px_rgba(0,0,0,0.95)]">
-          <svg
-            aria-hidden="true"
-            className="mx-auto h-10 w-10 text-[#6F6D66]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M5 19V9m7 10V5m7 14v-7"
-            />
-          </svg>
-          <p className="mt-4 text-base font-medium text-[#F5F4F0]">
-            No benchmark runs yet
-          </p>
-          <Link
-            href="/dashboard"
-            className="mt-5 inline-flex items-center rounded-xl bg-[#C8A882] px-4 py-2.5 text-sm font-semibold text-[#0A0A08] transition-colors hover:bg-[#D4B592]"
-          >
-            Run your first benchmark →
-          </Link>
-        </div>
-      ) : (
+      {overviews.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mt-6">
           {overviews.map((overview) => (
             <article
@@ -206,7 +187,9 @@ export default async function BenchmarksPage() {
             </article>
           ))}
         </div>
-      )}
+      ) : null}
+
+      <BenchmarkControls cases={cases} suites={suites} hasRuns={overviews.length > 0} />
     </div>
   );
 }
