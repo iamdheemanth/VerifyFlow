@@ -62,6 +62,8 @@ async def _seed_contract_data(session: AsyncSession) -> dict[str, UUID]:
     suite = BenchmarkSuite(id=uuid4(), name="Smoke suite", description="Contract coverage suite")
     case = BenchmarkCase(
         id=uuid4(),
+        owner_subject="test-user",
+        owner_email="test@example.com",
         suite_id=suite.id,
         name="Wikipedia English",
         goal="Navigate to wikipedia and click English",

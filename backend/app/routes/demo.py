@@ -21,16 +21,39 @@ from app.routes.authorization import user_email, user_subject
 
 router = APIRouter(prefix="/demo", tags=["demo"])
 
+DEMO_SUITE_NAME = "Reliability Smoke Suite"
+DEMO_GOOGLE_CASE_NAME = "Google Search Result Verification"
+DEMO_WIKIPEDIA_CASE_NAME = "Wikipedia English Link Verification"
+
 
 @router.post("/seed")
 async def seed_demo_data(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(verify_token),
-) -> dict[str, int]:
+) -> dict[str, int | str]:
     owner = user_subject(current_user)
-    existing_runs = (await db.execute(select(Run.id).where(Run.owner_subject == owner))).scalars().all()
-    if existing_runs:
-        return {"created_runs": 0}
+    suite = (
+        await db.execute(
+            select(BenchmarkSuite).where(BenchmarkSuite.name == DEMO_SUITE_NAME)
+        )
+    ).scalar_one_or_none()
+    if suite is not None:
+        existing_demo_runs = (
+            await db.execute(
+                select(Run.id).where(
+                    Run.owner_subject == owner,
+                    Run.kind == "benchmark",
+                    Run.benchmark_suite_id == suite.id,
+                )
+            )
+        ).scalars().first()
+        if existing_demo_runs is not None:
+            return {
+                "created_runs": 0,
+                "created_suites": 0,
+                "created_cases": 0,
+                "message": "No new demo data was created. Demo benchmark data already exists for this account.",
+            }
 
     executor_config = ModelPromptConfig(
         role="executor",
@@ -48,34 +71,62 @@ async def seed_demo_data(
         prompt_version="v1",
         config_metadata={"stance": "skeptical"},
     )
-    suite = (
-        await db.execute(
-            select(BenchmarkSuite).where(BenchmarkSuite.name == "Reliability Smoke Suite")
-        )
-    ).scalar_one_or_none()
+    created_suites = 0
     if suite is None:
         suite = BenchmarkSuite(
-            name="Reliability Smoke Suite",
+            name=DEMO_SUITE_NAME,
             description="Small benchmark suite for replaying representative verification flows.",
         )
+        db.add(suite)
+        await db.flush()
+        created_suites = 1
 
     case = (
         await db.execute(
             select(BenchmarkCase).where(
                 BenchmarkCase.suite_id == suite.id,
-                BenchmarkCase.name == "Google Search Result Verification",
+                BenchmarkCase.name == DEMO_GOOGLE_CASE_NAME,
+                BenchmarkCase.owner_subject == owner,
             )
         )
     ).scalar_one_or_none()
+    created_cases = 0
     if case is None:
         case = BenchmarkCase(
+            owner_subject=owner,
+            owner_email=user_email(current_user),
             suite=suite,
-            name="Google Search Result Verification",
+            name=DEMO_GOOGLE_CASE_NAME,
             goal="Navigate to https://www.google.com/search?q=OpenAI and verify that the results page contains the text OpenAI",
             acceptance_criteria="The browser opens the Google search results page for OpenAI and the visible page text or page title contains OpenAI.",
             expected_outcome="completed",
             label_data={"expected_verified": True},
         )
+        db.add(case)
+        created_cases += 1
+
+    escalated_case = (
+        await db.execute(
+            select(BenchmarkCase).where(
+                BenchmarkCase.suite_id == suite.id,
+                BenchmarkCase.name == DEMO_WIKIPEDIA_CASE_NAME,
+                BenchmarkCase.owner_subject == owner,
+            )
+        )
+    ).scalar_one_or_none()
+    if escalated_case is None:
+        escalated_case = BenchmarkCase(
+            owner_subject=owner,
+            owner_email=user_email(current_user),
+            suite=suite,
+            name=DEMO_WIKIPEDIA_CASE_NAME,
+            goal="Navigate to https://www.wikipedia.org, click the English language link, and verify that the destination page contains The Free Encyclopedia",
+            acceptance_criteria="The browser opens https://www.wikipedia.org, clicks the English language link, and the destination page contains The Free Encyclopedia in the visible page text or title.",
+            expected_outcome="needs_review",
+            label_data={"expected_verified": False},
+        )
+        db.add(escalated_case)
+        created_cases += 1
 
     completed_run = Run(
         owner_subject=owner,
@@ -147,13 +198,15 @@ async def seed_demo_data(
     escalated_run = Run(
         owner_subject=owner,
         owner_email=user_email(current_user),
-        goal="Navigate to https://www.wikipedia.org, click the English language link, and verify that the destination page contains The Free Encyclopedia",
-        acceptance_criteria="The browser opens https://www.wikipedia.org, clicks the English language link, and the destination page contains The Free Encyclopedia in the visible page text or title.",
+        goal=escalated_case.goal,
+        acceptance_criteria=escalated_case.acceptance_criteria,
         status="failed",
-        kind="standard",
+        kind="benchmark",
         latest_confidence=0.0,
         executor_config=executor_config,
         judge_config=judge_config,
+        benchmark_suite=suite,
+        benchmark_case=escalated_case,
     )
     escalated_task = Task(
         run=escalated_run,
@@ -235,6 +288,7 @@ async def seed_demo_data(
             judge_config,
             suite,
             case,
+            escalated_case,
             completed_run,
             completed_task,
             completed_attempt,
@@ -248,4 +302,9 @@ async def seed_demo_data(
         ]
     )
     await db.commit()
-    return {"created_runs": 2}
+    return {
+        "created_runs": 2,
+        "created_suites": created_suites,
+        "created_cases": created_cases,
+        "message": "Demo benchmark data created.",
+    }

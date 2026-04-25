@@ -6,6 +6,17 @@ export interface CreateRunRequest {
   benchmark_case_id?: string | null;
 }
 
+export interface CreateBenchmarkCaseRequest {
+  suite_id?: string | null;
+  suite_name?: string | null;
+  suite_description?: string | null;
+  name: string;
+  goal: string;
+  acceptance_criteria: string | null;
+  expected_outcome?: string | null;
+  label_data?: Record<string, unknown> | null;
+}
+
 export interface Task {
   id: string;
   run_id: string;

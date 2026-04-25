@@ -71,6 +71,11 @@ class BenchmarkSuiteSchema(BaseModel):
     created_at: datetime
 
 
+class CreateBenchmarkSuiteRequest(BaseModel):
+    name: str
+    description: str | None = None
+
+
 class BenchmarkCaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -82,6 +87,17 @@ class BenchmarkCaseSchema(BaseModel):
     expected_outcome: str | None
     label_data: dict[str, Any] | None = None
     created_at: datetime
+
+
+class CreateBenchmarkCaseRequest(BaseModel):
+    suite_id: UUID | None = None
+    suite_name: str | None = None
+    suite_description: str | None = None
+    name: str
+    goal: str
+    acceptance_criteria: str | None = None
+    expected_outcome: str | None = None
+    label_data: dict[str, Any] | None = None
 
 
 class TaskAttemptSchema(BaseModel):

@@ -76,9 +76,12 @@ class BenchmarkCase(Base):
     __tablename__ = "benchmark_cases"
     __table_args__ = (
         Index("ix_benchmark_cases_suite_id", "suite_id"),
+        Index("ix_benchmark_cases_owner_subject_suite_id", "owner_subject", "suite_id"),
     )
 
     id: Mapped[UUID] = mapped_column(uuid_type, primary_key=True, default=uuid4)
+    owner_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     suite_id: Mapped[UUID] = mapped_column(
         uuid_type,
         ForeignKey("benchmark_suites.id", ondelete="CASCADE"),

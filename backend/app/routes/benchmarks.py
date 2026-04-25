@@ -10,14 +10,16 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import verify_token
 from app.db.session import get_db
-from app.models.domain import BenchmarkSuite, Run
-from app.routes.authorization import user_subject
+from app.models.domain import BenchmarkCase, BenchmarkSuite, Run, utcnow
+from app.routes.authorization import user_email, user_subject
 from app.routes._contracts import build_benchmark_drilldown, raise_api_error
 from app.schemas.run import (
     BenchmarkCaseSchema,
     BenchmarkDrilldownSchema,
     BenchmarkOverviewSchema,
     BenchmarkSuiteSchema,
+    CreateBenchmarkCaseRequest,
+    CreateBenchmarkSuiteRequest,
 )
 
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
@@ -84,24 +86,153 @@ def _build_overviews(runs: list[Run]) -> list[BenchmarkOverviewSchema]:
     return sorted(overviews, key=lambda item: item.suite_name.lower())
 
 
+def _clean_required(value: str | None, field_name: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "invalid_benchmark_payload",
+            f"{field_name} is required",
+            details={"field": field_name},
+        )
+    return cleaned
+
+
+async def _get_owned_benchmark_case_or_404(
+    db: AsyncSession,
+    case_id: UUID,
+    owner_subject: str,
+) -> BenchmarkCase:
+    result = await db.execute(
+        select(BenchmarkCase)
+        .options(selectinload(BenchmarkCase.suite))
+        .where(BenchmarkCase.id == case_id, BenchmarkCase.owner_subject == owner_subject)
+    )
+    case = result.scalar_one_or_none()
+    if case is None:
+        raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            "benchmark_case_not_found",
+            "Benchmark case not found",
+            details={"benchmark_case_id": str(case_id)},
+        )
+    return case
+
+
 @router.get("/suites", response_model=list[BenchmarkSuiteSchema])
-async def list_benchmark_suites(db: AsyncSession = Depends(get_db)) -> list[BenchmarkSuiteSchema]:
-    result = await db.execute(select(BenchmarkSuite).order_by(BenchmarkSuite.created_at.asc()))
-    return result.scalars().all()
+async def list_benchmark_suites(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[BenchmarkSuiteSchema]:
+    owner = user_subject(current_user)
+    result = await db.execute(
+        select(BenchmarkSuite)
+        .join(BenchmarkSuite.cases)
+        .where(BenchmarkCase.owner_subject == owner)
+        .order_by(BenchmarkSuite.created_at.asc())
+    )
+    return result.scalars().unique().all()
 
 
 @router.get("/cases", response_model=list[BenchmarkCaseSchema])
-async def list_benchmark_cases(db: AsyncSession = Depends(get_db)) -> list[BenchmarkCaseSchema]:
+async def list_benchmark_cases(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> list[BenchmarkCaseSchema]:
+    owner = user_subject(current_user)
     result = await db.execute(
-        select(BenchmarkSuite)
-        .options(selectinload(BenchmarkSuite.cases))
-        .order_by(BenchmarkSuite.created_at.asc())
+        select(BenchmarkCase)
+        .where(BenchmarkCase.owner_subject == owner)
+        .order_by(BenchmarkCase.created_at.asc())
     )
-    suites = result.scalars().unique().all()
-    cases = []
-    for suite in suites:
-        cases.extend(suite.cases)
-    return cases
+    return result.scalars().all()
+
+
+@router.post("/suites", response_model=BenchmarkSuiteSchema, status_code=status.HTTP_201_CREATED)
+async def create_benchmark_suite(
+    payload: CreateBenchmarkSuiteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> BenchmarkSuiteSchema:
+    _owner = user_subject(current_user)
+    name = _clean_required(payload.name, "name")
+    result = await db.execute(select(BenchmarkSuite).where(BenchmarkSuite.name == name))
+    suite = result.scalar_one_or_none()
+    if suite is None:
+        suite = BenchmarkSuite(name=name, description=payload.description)
+        db.add(suite)
+        await db.commit()
+        await db.refresh(suite)
+    return suite
+
+
+@router.post("/cases", response_model=BenchmarkCaseSchema, status_code=status.HTTP_201_CREATED)
+async def create_benchmark_case(
+    payload: CreateBenchmarkCaseRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> BenchmarkCaseSchema:
+    owner = user_subject(current_user)
+    suite = None
+    if payload.suite_id is not None:
+        suite = (
+            await db.execute(select(BenchmarkSuite).where(BenchmarkSuite.id == payload.suite_id))
+        ).scalar_one_or_none()
+        if suite is None:
+            raise_api_error(
+                status.HTTP_404_NOT_FOUND,
+                "benchmark_suite_not_found",
+                "Benchmark suite not found",
+                details={"suite_id": str(payload.suite_id)},
+            )
+    else:
+        suite_name = _clean_required(payload.suite_name, "suite_name")
+        suite = (
+            await db.execute(select(BenchmarkSuite).where(BenchmarkSuite.name == suite_name))
+        ).scalar_one_or_none()
+        if suite is None:
+            suite = BenchmarkSuite(name=suite_name, description=payload.suite_description)
+            db.add(suite)
+            await db.flush()
+
+    case = BenchmarkCase(
+        owner_subject=owner,
+        owner_email=user_email(current_user),
+        suite=suite,
+        name=_clean_required(payload.name, "name"),
+        goal=_clean_required(payload.goal, "goal"),
+        acceptance_criteria=payload.acceptance_criteria,
+        expected_outcome=payload.expected_outcome,
+        label_data=payload.label_data,
+    )
+    db.add(case)
+    await db.commit()
+    await db.refresh(case)
+    return case
+
+
+@router.post("/cases/{case_id}/runs", response_model=dict[str, str], status_code=status.HTTP_201_CREATED)
+async def start_benchmark_case_run(
+    case_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(verify_token),
+) -> dict[str, str]:
+    case = await _get_owned_benchmark_case_or_404(db, case_id, user_subject(current_user))
+    run = Run(
+        owner_subject=user_subject(current_user),
+        owner_email=user_email(current_user),
+        goal=case.goal,
+        acceptance_criteria=case.acceptance_criteria,
+        status="queued",
+        queued_at=utcnow(),
+        kind="benchmark",
+        benchmark_suite_id=case.suite_id,
+        benchmark_case_id=case.id,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    return {"run_id": str(run.id), "status": run.status, "kind": run.kind}
 
 
 @router.get("/overview", response_model=list[BenchmarkOverviewSchema])

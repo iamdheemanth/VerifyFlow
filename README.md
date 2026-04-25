@@ -174,14 +174,16 @@ The frontend build requires the frontend environment variables listed above. CI 
 
 With the backend API, worker and frontend running, open `http://localhost:3000/benchmarks`.
 
-Use **Seed demo benchmarks** on an empty local account to create the demo benchmark suite and sample runs. If the seed response creates `0` runs, demo data may already exist for that user or another run already prevents reseeding.
+Create a benchmark case by entering a suite name, case name, goal and acceptance criteria. Existing suites can also be selected from the form.
 
-The Benchmarks page also lists available benchmark cases. Use **Run benchmark** on a case to create a new queued benchmark run, then keep the backend worker running so it can claim and execute the run:
+Use **Run benchmark** on a case to create a queued benchmark run. Keep the backend worker running so it can claim and execute the run:
 
 ```bash
 cd backend
 python -m app.worker.run_worker
 ```
+
+After the worker completes the run, refresh the Benchmarks page to view the updated overview and result metrics. **Seed demo benchmarks** remains available as an optional shortcut for sample benchmark data.
 
 ## Security Model
 

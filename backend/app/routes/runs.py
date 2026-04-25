@@ -81,7 +81,10 @@ async def create_run(
     benchmark_suite_id = None
     if payload.benchmark_case_id is not None:
         benchmark_case_result = await db.execute(
-            select(BenchmarkCase).where(BenchmarkCase.id == payload.benchmark_case_id)
+            select(BenchmarkCase).where(
+                BenchmarkCase.id == payload.benchmark_case_id,
+                BenchmarkCase.owner_subject == user_subject(current_user),
+            )
         )
         benchmark_case = benchmark_case_result.scalar_one_or_none()
         if benchmark_case is None:

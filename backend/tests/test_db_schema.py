@@ -48,6 +48,8 @@ async def test_schema_exposes_expected_indexes_constraints_and_reviewer_identity
                     "tasks_uniques": {item["name"] for item in schema.get_unique_constraints("tasks")},
                     "task_attempt_uniques": {item["name"] for item in schema.get_unique_constraints("task_attempts")},
                     "run_columns": {item["name"] for item in schema.get_columns("runs")},
+                    "benchmark_case_columns": {item["name"] for item in schema.get_columns("benchmark_cases")},
+                    "benchmark_case_indexes": {item["name"] for item in schema.get_indexes("benchmark_cases")},
                     "reviewer_columns": {item["name"] for item in schema.get_columns("reviewer_decisions")},
                     "ledger_foreign_keys": schema.get_foreign_keys("ledger_entries"),
                 }
@@ -63,6 +65,8 @@ async def test_schema_exposes_expected_indexes_constraints_and_reviewer_identity
         assert "uq_task_attempts_task_id_attempt_index" in inspected["task_attempt_uniques"]
         assert "failure_record" in inspected["run_columns"]
         assert {"owner_subject", "owner_email"} <= inspected["run_columns"]
+        assert {"owner_subject", "owner_email"} <= inspected["benchmark_case_columns"]
+        assert "ix_benchmark_cases_owner_subject_suite_id" in inspected["benchmark_case_indexes"]
         assert {
             "queued_at",
             "started_at",
@@ -96,8 +100,9 @@ def test_alembic_history_has_single_head_and_expected_revision_chain():
     revisions = [revision.revision for revision in script.walk_revisions(base="base", head="heads")]
 
     assert len(heads) == 1
-    assert heads[0] == "f2b9c8d1e0a3"
+    assert heads[0] == "b8c7d6e5f4a3"
     assert revisions == [
+        "b8c7d6e5f4a3",
         "f2b9c8d1e0a3",
         "e7a1b0c9d2f4",
         "c4c2a6ee8d1e",
@@ -211,6 +216,7 @@ def test_alembic_upgrade_from_reliability_expansion_checkpoint_preserves_legacy_
                 schema = inspect(conn)
                 reviewer_columns = {item["name"] for item in schema.get_columns("reviewer_decisions")}
                 run_columns = {item["name"] for item in schema.get_columns("runs")}
+                benchmark_case_columns = {item["name"] for item in schema.get_columns("benchmark_cases")}
                 alembic_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
                 reviewer_row = conn.execute(
                     text(
@@ -225,10 +231,11 @@ def test_alembic_upgrade_from_reliability_expansion_checkpoint_preserves_legacy_
         finally:
             engine.dispose()
 
-        assert alembic_revision == "f2b9c8d1e0a3"
+        assert alembic_revision == "b8c7d6e5f4a3"
         assert {"reviewer_name", "reviewer_display_name", "reviewer_key"} <= reviewer_columns
         assert "failure_record" in run_columns
         assert {"owner_subject", "owner_email"} <= run_columns
+        assert {"owner_subject", "owner_email"} <= benchmark_case_columns
         assert {"queued_at", "lease_owner", "lease_expires_at", "execution_attempts"} <= run_columns
         assert reviewer_row["reviewer_name"] == "Legacy Reviewer"
         assert reviewer_row["reviewer_display_name"] == "Legacy Reviewer"

@@ -3,6 +3,7 @@ import type {
   BenchmarkOverview,
   BenchmarkSuite,
   ConfigurationComparison,
+  CreateBenchmarkCaseRequest,
   CreateRunRequest,
   Escalation,
   LedgerEntry,
@@ -153,8 +154,18 @@ export const api = {
     });
   },
 
-  async seedDemo(): Promise<{ created_runs: number }> {
-    return request<{ created_runs: number }>("/demo/seed", { method: "POST" });
+  async seedDemo(): Promise<{
+    created_runs: number;
+    created_suites?: number;
+    created_cases?: number;
+    message?: string;
+  }> {
+    return request<{
+      created_runs: number;
+      created_suites?: number;
+      created_cases?: number;
+      message?: string;
+    }>("/demo/seed", { method: "POST" });
   },
 
   async getRuns(): Promise<RunSummary[]> {
@@ -204,6 +215,13 @@ export const api = {
 
   async getBenchmarkOverview(): Promise<BenchmarkOverview[]> {
     return request<BenchmarkOverview[]>("/benchmarks/overview");
+  },
+
+  async createBenchmarkCase(payload: CreateBenchmarkCaseRequest): Promise<BenchmarkCase> {
+    return request<BenchmarkCase>("/benchmarks/cases", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   async getConfigurations(): Promise<ModelPromptConfig[]> {
